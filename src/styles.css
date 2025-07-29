@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css?family=Roboto&display=swap');
+@import url('https://fonts.googleapis.com/css?family=Goblin+One&display=swap');
+
+/* You can add global styles to this file, and also import other style files */
+* {
+  padding: 0;
+  margin: 0;
+}
+
+a,
+p,
+div {
+  color: white;
+}
+
+div {
+  position: relative;
+  display: block;
+  line-height: 1.5;
+}
+
+html, body, app-root {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+app-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  mix-blend-mode: multiply;
+}
+
+h1, h2, h3, h4 {
+  font-family: Goblin One, Roboto, 'Open Sans', 'Helvetica Neue', sans-serif;
+}

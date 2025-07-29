@@ -1,0 +1,35 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "baseUrl": "./",
+    "outDir": "./_site",
+    "strictPropertyInitialization": false,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "allowSyntheticDefaultImports": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "sourceMap": true,
+    "noImplicitAny": false,
+    "declaration": false,
+    "downlevelIteration": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "importHelpers": true,
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "module": "ES2022",
+    "typeRoots": ["./typings", "./node_modules/@types/"],
+    "lib": ["ES2022", "dom", "ScriptHost"]
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  }
+}
