@@ -35,3 +35,7 @@ app-root {
 h1, h2, h3, h4 {
   font-family: Goblin One, Roboto, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
+
+#game-frame div {
+  transform-origin: center !important;
+}

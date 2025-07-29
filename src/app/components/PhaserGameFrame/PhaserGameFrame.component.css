@@ -11,7 +11,3 @@
 #user-input {
   user-select: none;
 }
-
-#game-frame > div {
-  transform-origin: center !important;
-}
