@@ -4,6 +4,9 @@ import Phaser from 'phaser';
 import { GameConsole } from '../services/console-ui/console-ui';
 import { Inject } from '../services/di/di.system';
 import { UIBuilder } from '../mechanics/ui/uiFormatter';
+import { createQuickPhaserDeckUI, PhaserDeckUIExamples } from '../ui/card/deck-ui.examples';
+import { DeckClickEvent, DeckStyle } from '../ui/card/deck-ui.types';
+import { PhaserDeckEvents } from '../ui/card/phaser-deck';
 
 export enum GameEvents {
 }
@@ -22,7 +25,17 @@ export default class CoreScene extends Phaser.Scene {
       });
     },
 
-    () => { 
+    () => {
+      // Demo: Create example deck UIs
+      const standardDeck = createQuickPhaserDeckUI(this, 100, 100, DeckStyle.STANDARD, true);
+      const unoDeck = createQuickPhaserDeckUI(this, 300, 100, DeckStyle.UNO, false);
+      const diceSet = createQuickPhaserDeckUI(this, 500, 100, DeckStyle.DICE, true);
+      PhaserDeckUIExamples.createAnimatedDemo(this);
+      console.log('Demo deck UIs created:', { standardDeck, unoDeck, diceSet });
+
+      standardDeck.on(PhaserDeckEvents.DECK_CLICK, async (event: DeckClickEvent) => {
+        await standardDeck.shuffleDeck();
+      });
     },
   ];
 
@@ -39,7 +52,11 @@ export default class CoreScene extends Phaser.Scene {
 
   preload() {
     for (let asset of ASSETS) {
-      this.load?.image(asset.type, asset.url);
+      if (asset.isAtlas) {
+        this.load?.atlas(asset.type, asset.url, asset.jsonUrl);
+      } else {
+        this.load?.image(asset.type, asset.url);
+      }
     }
   }
 

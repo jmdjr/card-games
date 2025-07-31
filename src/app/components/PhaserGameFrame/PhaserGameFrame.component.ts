@@ -25,6 +25,7 @@ export class PhaserGameFrameComponent implements OnInit {
       parent: 'game-frame',
       backgroundColor: this.uiConfig.backgroundColor,
       banner: false,
+      pixelArt: true,
       scale: {
         height: this.uiConfig.height,
         width: this.uiConfig.width,

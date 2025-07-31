@@ -1,9 +1,12 @@
 import Button from './mechanics/button/button';
 import { LabeledButton } from './mechanics/button/labeledButton';
 
+export const ASSET_ATLAS = "atlas";
 export interface Asset {
   type: string;
   url: string;
+  isAtlas?: boolean; // Optional, used for atlas assets
+  jsonUrl?: string; // Optional, used for atlas assets
   width: number;
   height: number;
   color?: string; // Optional, used for LabeledButton
@@ -20,7 +23,7 @@ const startBurstArt = {
   height: 64
 };
 
-const ASSETS = [
+const ASSETS: Asset[] = [
   {
     type: LabeledButton.TYPE,
     ...startBurstArt,
@@ -29,6 +32,14 @@ const ASSETS = [
   {
     type: Button.TYPE,
     ...startBurstArt
+  },
+  {
+    type: ASSET_ATLAS,
+    isAtlas: true,
+    url: 'assets/game/art/kenny_cards/kenny_cards.png',
+    jsonUrl: 'assets/game/art/kenny_cards/kenny_cards.json',
+    height: 329,
+    width: 240
   }
 ];
 
