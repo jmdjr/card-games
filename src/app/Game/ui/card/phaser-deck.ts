@@ -1,23 +1,19 @@
 // Phaser-based Deck UI Component - Visual representation of a card deck
-import Phaser from 'phaser';
-import { 
-  DeckUIConfig, 
-  DeckUIState, 
-  CardDrawEvent, 
+import Phaser, { Tweens } from 'phaser';
+import {
+  DeckUIConfig,
+  DeckUIState,
+  CardDrawEvent,
   DeckClickEvent,
   DeckStyle,
   DeckOrientation,
-  DECK_UI_PRESETS 
+  DECK_UI_PRESETS
 } from './deck-ui.types';
 import { CardProperties } from '../../mechanics/card/card.types';
 import { Deck, GAME_TYPE } from '../../mechanics/card/deck.manager';
 import { ASSET_ATLAS } from '../../assets.data';
 import * as KennyCards from '../../../../assets/game/art/kenny_cards/kenny_cards.data';
-export enum PhaserDeckEvents {
-  CARD_DRAWN = 'cardDrawn',
-  DECK_SHUFFLED = 'deckShuffled',
-  DECK_CLICK = 'deckClick'
-}
+
 
 export class PhaserDeck extends Phaser.GameObjects.Container {
   private config: DeckUIConfig;
@@ -27,7 +23,12 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
   private topCardSprite: Phaser.GameObjects.Image | null = null;
   private cardCountText: Phaser.GameObjects.Text | null = null;
   private emptyDeckGraphics: Phaser.GameObjects.Graphics | null = null;
-  
+  static Events = {
+    CARD_DRAWN: 'cardDrawn',
+    DECK_SHUFFLED: 'deckShuffled',
+    DECK_CLICK: 'deckClick'
+  };
+
   // Animation tracking
   private isAnimating: boolean = false;
 
@@ -39,14 +40,14 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
     config: Partial<DeckUIConfig> = {}
   ) {
     super(scene, x, y);
-    
+
     this.deck = deck;
     this.config = this.mergeWithDefaults(config);
     this.deckState = this.initializeState();
-    
+
     // Add to scene
     scene.add.existing(this);
-    
+
     // Initialize the visual representation
     this.createDeckVisuals();
     this.setupInteractions();
@@ -89,17 +90,17 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
 
   private createDeckVisuals(): void {
     this.clearVisuals();
-    
+
     if (this.deckState.isEmpty) {
       this.createEmptyDeckVisual();
     } else {
       this.createCardStack();
-      
+
       if (this.config.showTopCard && this.deckState.topCard) {
         this.createTopCardVisual();
       }
     }
-    
+
     if (this.config.showCardCount) {
       this.createCardCountDisplay();
     }
@@ -108,21 +109,21 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
   private createCardStack(): void {
     const cardsToShow = Math.min(this.deckState.cardCount, this.config.maxVisibleCards);
     const backFrameName = this.getBackFrameName();
-    
+
     for (let i = 0; i < cardsToShow; i++) {
       const offsetX = i * this.config.cardOffsetX;
       const offsetY = i * this.config.cardOffsetY;
-      
+
       const cardSprite = this.scene.add.image(offsetX, offsetY, ASSET_ATLAS, backFrameName);
       cardSprite.setOrigin(0, 0);
       cardSprite.setScale(this.config.scale);
       cardSprite.setDepth(i);
-      
+
       // Add subtle shadow effect for depth
       if (this.config.shadow && i > 0) {
         cardSprite.setTintFill(0x000000, 0.1);
       }
-      
+
       this.add(cardSprite);
       this.cardSprites.push(cardSprite);
     }
@@ -137,22 +138,22 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
 
   private createTopCardVisual(): void {
     if (!this.deckState.topCard) return;
-    
+
     const offsetX = (this.config.maxVisibleCards * this.config.cardOffsetX) + 10;
     const offsetY = this.config.maxVisibleCards * this.config.cardOffsetY;
-    
+
     this.topCardSprite = this.scene.add.image(offsetX, offsetY, ASSET_ATLAS, this.deckState.topCard.assetKey);
     this.topCardSprite.setOrigin(0, 0);
     this.topCardSprite.setScale(this.config.scale); // Scale up for visibility
     this.topCardSprite.setDepth(this.config.maxVisibleCards + 1);
-    
+
     // Add green border to indicate it's the revealed card
-    const borderGraphics = this.scene.add.graphics();
-    borderGraphics.lineStyle(3, 0x4CAF50);
-    borderGraphics.strokeRect(offsetX - 2, offsetY - 2, (this._configedWidth() + 4), (this._configedHeight() + 4));
-    borderGraphics.setDepth(this.config.maxVisibleCards);
-    
-    this.add([this.topCardSprite, borderGraphics]);
+    // const borderGraphics = this.scene.add.graphics();
+    // borderGraphics.lineStyle(3, 0x4CAF50);
+    // borderGraphics.strokeRect(offsetX - 2, offsetY - 2, (this._configedWidth() + 4), (this._configedHeight() + 4));
+    // borderGraphics.setDepth(this.config.maxVisibleCards);
+
+    this.add([this.topCardSprite]);
   }
 
   private createEmptyDeckVisual(): void {
@@ -170,12 +171,12 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
       this.emptyDeckGraphics.lineBetween(0, i, 0, i + 5);
       this.emptyDeckGraphics.lineBetween(this._configedWidth(), i, this._configedWidth(), i + 5);
     }
-    
+
     // Add "Empty" text
     const emptyText = this.scene.add.text(
-      this._configedWidth() / 2, 
+      this._configedWidth() / 2,
       this._configedHeight() / 2,
-      'Empty', 
+      'Empty',
       {
         fontSize: '32pt',
         color: '#999999',
@@ -183,19 +184,19 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
       }
     );
     emptyText.setOrigin(0.5);
-    
+
     this.add([this.emptyDeckGraphics, emptyText]);
   }
 
   private createCardCountDisplay(): void {
     const countX = this.config.width / 2;
     const countY = this.config.height + 15;
-    
+
     // Background circle
     const countBg = this.scene.add.graphics();
     countBg.fillStyle(0x000000, 0.7);
     countBg.fillCircle(countX, countY, 28);
-    
+
     this.cardCountText = this.scene.add.text(countX, countY, this.deckState.cardCount.toString(), {
       fontSize: '28pt',
       color: '#ffffff',
@@ -203,7 +204,7 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
       align: 'center'
     });
     this.cardCountText.setOrigin(0.5);
-    
+
     this.add([countBg, this.cardCountText]);
   }
 
@@ -229,7 +230,7 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
 
     this.on('pointerdown', this.handlePointerDown, this);
     this.on('pointerup', this.handlePointerUp, this);
-    
+
     if (this.config.hoverEffect) {
       this.on('pointerover', this.handlePointerOver, this);
       this.on('pointerout', this.handlePointerOut, this);
@@ -238,17 +239,17 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
 
   private handlePointerDown(): void {
     if (this.isAnimating || this.deckState.isEmpty) return;
-    
+
     // Visual feedback - slightly scale down
     this.setScale(0.98);
   }
 
   private handlePointerUp(): void {
     if (this.isAnimating) return;
-    
+
     // Reset scale
     this.setScale(1);
-    
+
     if (this.deckState.isEmpty) return;
 
     const clickEvent: DeckClickEvent = {
@@ -257,12 +258,12 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
       position: { x: this.input!.localX, y: this.input!.localY }
     };
 
-    this.emit(PhaserDeckEvents.DECK_CLICK, clickEvent);
+    this.emit(PhaserDeck.Events.DECK_CLICK, clickEvent);
   }
 
   private handlePointerOver(): void {
     if (this.isAnimating || this.deckState.isEmpty) return;
-    
+
     // Hover effect - lift cards slightly
     this.cardSprites.forEach((sprite, index) => {
       this.scene.tweens.add({
@@ -278,7 +279,7 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
 
   private handlePointerOut(): void {
     if (this.isAnimating) return;
-    
+
     // Reset hover effect
     this.cardSprites.forEach((sprite, index) => {
       this.scene.tweens.add({
@@ -315,7 +316,7 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
       deckId: this.deck.name
     };
 
-    this.emit(PhaserDeckEvents.CARD_DRAWN, drawEvent);
+    this.emit(PhaserDeck.Events.CARD_DRAWN, drawEvent);
     return card;
   }
 
@@ -323,14 +324,14 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
     if (this.isAnimating) return;
 
     this.deck.shuffle();
-    
+
     if (this.config.shuffleAnimationDuration > 0) {
       await this.animateShuffle();
     }
 
     this.updateState();
     this.refresh();
-    this.emit(PhaserDeckEvents.DECK_SHUFFLED, { deckId: this.deck.name });
+    this.emit(PhaserDeck.Events.DECK_SHUFFLED, { deckId: this.deck.name });
   }
 
   // =========================================================================
@@ -374,42 +375,63 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
     return new Promise(resolve => {
       this.isAnimating = true;
       this.deckState.isShuffling = true;
+      // this.topCardSprite?.setFrame(this.getBackFrameName());
+      this.topCardSprite?.setVisible(false);
 
-      const shufflePromises = this.cardSprites.map((sprite, index) => {
-        return new Promise<void>(cardResolve => {
-          // Random shuffle movements
-          const chain = this.scene.tweens.chain({
-            targets: sprite,
-            ease: 'Power2'
+      const totalDuration = this.config.shuffleAnimationDuration;
+      const shufflePhases = 6; // Number of random movements
+      const phaseDuration = totalDuration / (shufflePhases); // +2 for settle time
+
+      const performShufflePhase = () => {
+        // Random shuffle movements for this phase
+        const phasePromises = this.cardSprites.map((sprite, index) => {
+          return new Promise<void>(phaseResolve => {
+            const originalX = index * this.config.cardOffsetX;
+            const originalY = index * this.config.cardOffsetY;
+
+            const tweenChain: any[] = [];
+            for (let i = 0; i < shufflePhases; i++) {
+              const randomX = (Math.random() - 0.5) * 30; // Reduced range for more controlled movement
+              const randomY = (Math.random() - 0.5) * 50;
+              const randomRotation = (Math.random() - 0.5) * 0.5;
+              tweenChain.push(
+                this.scene.tweens.create({
+                  targets: sprite,
+                  x: sprite.x + randomX,
+                  y: sprite.y + randomY,
+                  rotation: randomRotation,
+                  duration: phaseDuration,
+                  ease: 'Sine.easeInOut',
+                }));
+              tweenChain.push(
+                this.scene.tweens.create({
+                  targets: sprite,
+                  x: originalX,
+                  y: originalY,
+                  rotation: 0,
+                  duration: phaseDuration * 2, // Take a bit longer to settle
+                  ease: 'Back.easeOut',
+                })
+              );
+            }
+
+            this.scene.tweens.chain({
+              tweens: tweenChain,
+              onComplete: () => phaseResolve()
+            });
           });
-
-          for (let i = 0; i < 4; i++) {
-            chain.add([{
-              x: sprite.x + (Math.random() - 0.5) * 300,
-              y: sprite.y + (Math.random() - 0.5) * 300,
-              rotation: (Math.random() - 0.5) * 0.5,
-              duration: this.config.shuffleAnimationDuration,
-              ease: 'Power2'
-            }]);
-          }
-          
-          // Return to original position
-          chain.add([{
-            x: index * this.config.cardOffsetX,
-            y: index * this.config.cardOffsetY,
-            rotation: 0,
-            duration: this.config.shuffleAnimationDuration / 4,
-            ease: 'Power2',
-            onComplete: () => cardResolve()
-          }]);
         });
-      });
 
-      Promise.all(shufflePromises).then(() => {
-        this.isAnimating = false;
-        this.deckState.isShuffling = false;
-        resolve();
-      });
+        Promise.all(phasePromises).then(() => {
+          // Small delay between phases for visual effect
+          this.isAnimating = false;
+          this.deckState.isShuffling = false;
+          resolve();
+        });
+      };
+
+      // Start the shuffle animation
+      performShufflePhase();
     });
   }
 
@@ -424,6 +446,7 @@ export class PhaserDeck extends Phaser.GameObjects.Container {
   }
 
   private clearVisuals(): void {
+    console.log('Clearing deck visuals');
     this.removeAll(true);
     this.cardSprites = [];
     this.topCardSprite = null;

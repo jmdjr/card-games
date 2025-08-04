@@ -96,7 +96,7 @@ export const DECK_UI_PRESETS: { [key in GAME_TYPE]: Partial<DeckUIConfig> } = {
     hoverEffect: true,
     animateCardDraw: true,
     drawAnimationDuration: 300,
-    shuffleAnimationDuration: 1000,
+    shuffleAnimationDuration: 800,
     cardBackAssets: {
       [DeckStyle.STANDARD]: 'card_back',
       [DeckStyle.UNO]: 'color_back',
@@ -118,7 +118,7 @@ export const DECK_UI_PRESETS: { [key in GAME_TYPE]: Partial<DeckUIConfig> } = {
     hoverEffect: true,
     animateCardDraw: true,
     drawAnimationDuration: 300,
-    shuffleAnimationDuration: 1000,
+    shuffleAnimationDuration: 500,
     cardBackAssets: {
       [DeckStyle.STANDARD]: 'card_back',
       [DeckStyle.UNO]: 'color_back',

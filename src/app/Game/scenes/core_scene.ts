@@ -6,10 +6,7 @@ import { Inject } from '../services/di/di.system';
 import { UIBuilder } from '../mechanics/ui/uiFormatter';
 import { createQuickPhaserDeckUI, PhaserDeckUIExamples } from '../ui/card/deck-ui.examples';
 import { DeckClickEvent, DeckStyle } from '../ui/card/deck-ui.types';
-import { PhaserDeckEvents } from '../ui/card/phaser-deck';
-
-export enum GameEvents {
-}
+import { PhaserDeck } from '../ui/card/phaser-deck';
 
 export default class CoreScene extends Phaser.Scene {
   private uiCreation: (() => void)[] = [
@@ -33,7 +30,7 @@ export default class CoreScene extends Phaser.Scene {
       PhaserDeckUIExamples.createAnimatedDemo(this);
       console.log('Demo deck UIs created:', { standardDeck, unoDeck, diceSet });
 
-      standardDeck.on(PhaserDeckEvents.DECK_CLICK, async (event: DeckClickEvent) => {
+      standardDeck.on(PhaserDeck.Events.DECK_CLICK, async (event: DeckClickEvent) => {
         await standardDeck.shuffleDeck();
       });
     },
