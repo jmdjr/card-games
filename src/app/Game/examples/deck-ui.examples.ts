@@ -1,5 +1,5 @@
-import { DeckUIConfig, DeckStyle, DeckOrientation } from './deck-ui.types';
-import { Deck, DeckFactory, DECK_TYPE } from '../deck/deck.manager';
+import { DeckUIConfig, DeckStyle, DeckOrientation } from '../mechanics/card/deck/deck.types';
+import { Deck, DeckFactory, DECK_TYPE } from '../mechanics/card/deck/deck.manager';
 import Phaser from 'phaser';
 import { DeckUI } from '../deck/ui/deck-ui';
 

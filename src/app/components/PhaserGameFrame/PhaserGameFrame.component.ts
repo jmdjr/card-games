@@ -3,7 +3,8 @@ import Phaser from 'phaser';
 
 import uiConfig from '../../Game/ui.config.json';
 import { GameConfig } from '../../Game/mechanics/ui/ui.config';
-import { HandDemoScene } from '../../Game/examples/hand.examples';
+import { SimpleHandDemoScene } from '../../Game/examples/hand.examples';
+import { TableDemoScene } from '../../Game/examples/table.examples';
 
 @Component({
   selector: 'app-PhaserGameFrame',
@@ -18,7 +19,7 @@ export class PhaserGameFrameComponent implements OnInit {
   constructor() { }
 
   ngOnInit() {
-    this.coreScene = new HandDemoScene();
+    this.coreScene = new TableDemoScene();
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.WEBGL,

@@ -203,10 +203,9 @@ const handUI = new HandUI(scene, x, y, hand, {
 ```
 hand/
 ├── index.ts              # Main exports
-├── hand.types.ts         # Core interfaces and events
+├── hand.types.ts         # All interfaces, events, and presets (consolidated)
 ├── hand.manager.ts       # Hand class implementation  
 └── ui/
-    ├── hand-ui.types.ts  # UI interfaces and presets
     └── hand-ui.ts        # HandUI class implementation
 ```
 

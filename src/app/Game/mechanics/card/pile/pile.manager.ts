@@ -68,8 +68,20 @@ export class Pile extends Phaser.Events.EventEmitter implements cardsCanBeAdded,
     return this.cards.find(card => card.id === cardId) || null;
   }
 
+  removeSpecificCard(cardId: string): CardProperties | null {
+    const cardIndex = this.cards.findIndex(card => card.id === cardId);
+    if (cardIndex >= 0) {
+      return this.cards.splice(cardIndex, 1)[0];
+    }
+    return null;
+  }
+
   getCards(): CardProperties[] {
     return [...this.cards];
+  }
+
+  getAllCards(): readonly CardProperties[] {
+    return this.cards;
   }
 
   getCardsByType(type: CardType): CardProperties[] {

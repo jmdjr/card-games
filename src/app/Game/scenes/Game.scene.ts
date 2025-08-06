@@ -1,6 +1,6 @@
-import { DeckUI } from "../mechanics/card/ui/deck-ui";
-import { createQuickDeck, DeckUIExamples } from "../mechanics/card/ui/deck-ui.examples";
-import { DeckStyle, DeckClickEvent } from "../mechanics/card/ui/deck-ui.types";
+import { DeckUI } from "../mechanics/card/ui/deck.ui";
+import { createQuickDeck, DeckUIExamples } from "../examples/deck-ui.examples";
+import { DeckStyle, DeckClickEvent } from "../mechanics/card/deck/deck.types";
 import CoreScene from "./Core.scene";
 
 

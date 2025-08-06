@@ -10,7 +10,7 @@ import {
   CardRevealStyle,
   HAND_UI_EVENTS,
   HAND_UI_PRESETS
-} from '../hand/ui/hand-ui.types';
+} from '../hand/hand.types';
 import { CardProperties } from '../card.types';
 import { Hand } from '../hand/hand.manager';
 import { HAND_EVENTS } from '../hand/hand.types';
@@ -70,8 +70,8 @@ export class HandUI extends Phaser.GameObjects.Container {
 
   private initializeState(): HandUIState {
     return {
-      displayedCards: [...this.hand.cards],
-      selectedCards: [...this.hand.selectedCards],
+      displayedCards: [...this.hand.getDisplayCards()],
+      selectedCards: [...this.hand.getSelectedCards],
       isAnimating: false,
       areCardsRevealed: this.config.showCardFaces,
       cardPositions: [],
@@ -443,14 +443,14 @@ export class HandUI extends Phaser.GameObjects.Container {
 
   // Hand event handlers
   private async onCardAdded(event: any): Promise<void> {
-    this.uiState.displayedCards = [...this.hand.cards];
+    this.uiState.displayedCards = [...this.hand.getDisplayCards()];
     this.createCardSprites();
     this.calculateCardPositions();
     this.positionCards(true);
   }
 
   private async onCardRemoved(event: any): Promise<void> {
-    this.uiState.displayedCards = [...this.hand.cards];
+    this.uiState.displayedCards = [...this.hand.getDisplayCards()];
     this.calculateCardPositions();
     this.positionCards(true);
   }
@@ -553,8 +553,8 @@ export class HandUI extends Phaser.GameObjects.Container {
   }
 
   refresh(): void {
-    this.uiState.displayedCards = [...this.hand.cards];
-    this.uiState.selectedCards = [...this.hand.selectedCards];
+    this.uiState.displayedCards = [...this.hand.getDisplayCards()];
+    this.uiState.selectedCards = [...this.hand.getSelectedCards];
     this.createHandVisuals();
   }
 

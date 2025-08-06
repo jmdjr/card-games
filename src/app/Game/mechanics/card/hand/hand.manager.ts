@@ -1,17 +1,16 @@
 // Core Hand class - Manages a collection of cards for a player or opponent
-import Phaser from 'phaser';
 import { CardProperties } from '../card.types';
 import {
   HandConfig,
   HandState,
-  HAND_EVENTS,
-  DEFAULT_HAND_CONFIGS
+  HAND_EVENTS
 } from './hand.types';
-import { GAME_TYPE } from '../deck/deck.manager';
 import { Pile } from '../pile/pile.manager';
 
 export class Hand extends Pile {
   private handConfig: HandConfig;
+  private selectedCards: CardProperties[] = [];
+  private areCardsRevealed: boolean = false;
 
   constructor(id: string, name: string, config: Partial<HandConfig> = {}) {
     super();
@@ -39,145 +38,103 @@ export class Hand extends Pile {
     return defaultConfig;
   }
 
-  private initializeState(): HandState {
-    return {
-      selectedCards: [],
-      isAnimating: false,
-      areCardsRevealed: this.handConfig.showCardFaces,
-      isFull: false,
-      isEmpty: true
-    };
-  }
-
   // =========================================================================
-  // CARD MANAGEMENT
+  // HAND-SPECIFIC CARD OPERATIONS (extending Pile behavior)
   // =========================================================================
 
-  /**
-   * Add a card to this hand
-   */
-  addCard(card: CardProperties, source: string = 'unknown'): boolean {
-    if (this.handState.isFull) {
-      console.warn(`Hand ${this.handConfig.name} is full, cannot add card`);
+  override addCard(card: CardProperties, source: string = 'unknown'): boolean {
+    if (this.isFull) {
       return false;
     }
 
-    this.handState.cards.push(card);
-    this.updateState();
-
-    const addEvent: CardAddedEvent = {
+    super.addCard(card);
+    
+    // Emit hand-specific event
+    this.emit(HAND_EVENTS.CARD_ADDED, {
       handId: this.handConfig.id,
       card,
-      source
-    };
-
-    this.emit(HAND_EVENTS.CARD_ADDED, addEvent);
-    return true;
-  }
-
-  /**
-   * Add multiple cards to this hand
-   */
-  addCards(cards: CardProperties[], source: string = 'unknown'): boolean {
-    if (this.handState.cardCount + cards.length > this.handConfig.maxCards) {
-      console.warn(`Hand ${this.handConfig.name} cannot fit ${cards.length} more cards`);
-      return false;
-    }
-
-    cards.forEach(card => {
-      this.handState.cards.push(card);
-      
-      const addEvent: CardAddedEvent = {
-        handId: this.handConfig.id,
-        card,
-        source
-      };
-
-      this.emit(HAND_EVENTS.CARD_ADDED, addEvent);
+      source,
+      handState: this.getHandState()
     });
 
-    this.updateState();
     return true;
   }
 
-  /**
-   * Remove a specific card from this hand
-   */
-  removeCard(card: CardProperties, destination: string = 'unknown'): boolean {
-    const cardIndex = this.handState.cards.findIndex(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
-
-    if (cardIndex === -1) {
-      console.warn(`Card not found in hand ${this.handConfig.name}`);
+  override addCards(cards: CardProperties[], source: string = 'unknown'): boolean {
+    if (this.size() + cards.length > this.handConfig.maxCards) {
       return false;
     }
 
-    const removedCard = this.handState.cards.splice(cardIndex, 1)[0];
-    
-    // Remove from selection if selected
-    this.deselectCard(removedCard);
-    
-    this.updateState();
+    for (const card of cards) {
+      super.addCard(card);
+      
+      // Emit event for each card
+      this.emit(HAND_EVENTS.CARD_ADDED, {
+        handId: this.handConfig.id,
+        card,
+        source,
+        handState: this.getHandState()
+      });
+    }
 
-    const removeEvent: CardRemovedEvent = {
-      handId: this.handConfig.id,
-      card: removedCard,
-      destination
-    };
-
-    this.emit(HAND_EVENTS.CARD_REMOVED, removeEvent);
     return true;
   }
 
-  /**
-   * Remove multiple cards from this hand
-   */
-  removeCards(cards: readonly CardProperties[], destination: string = 'unknown'): boolean {
-    const removedCards: CardProperties[] = [];
+  removeSpecificCardByRef(card: CardProperties, destination: string = 'unknown'): boolean {
+    // Use base class removeSpecificCard method
+    const removedCard = this.removeSpecificCard(card.id);
+    if (!removedCard) return false;
 
-    for (const card of cards) {
-      const cardIndex = this.handState.cards.findIndex(c => 
-        c.id === card.id || (c.suit === card.suit && c.value === card.value)
-      );
+    // Remove from selected cards if it was selected
+    this.deselectCard(removedCard);
 
-      if (cardIndex !== -1) {
-        const removedCard = this.handState.cards.splice(cardIndex, 1)[0];
-        removedCards.push(removedCard);
-        this.deselectCard(removedCard);
+    this.emit(HAND_EVENTS.CARD_REMOVED, {
+      handId: this.handConfig.id,
+      card: removedCard,
+      destination,
+      handState: this.getHandState()
+    });
 
-        const removeEvent: CardRemovedEvent = {
+    return true;
+  }
+
+  removeSelectedCards(destination: string = 'unknown'): CardProperties[] {
+    const removedCards = [...this.selectedCards];
+    
+    for (const card of removedCards) {
+      const removedCard = this.removeSpecificCard(card.id);
+      if (removedCard) {
+        this.emit(HAND_EVENTS.CARD_REMOVED, {
           handId: this.handConfig.id,
           card: removedCard,
-          destination
-        };
-
-        this.emit(HAND_EVENTS.CARD_REMOVED, removeEvent);
+          destination,
+          handState: this.getHandState()
+        });
       }
     }
 
-    this.updateState();
-    return removedCards.length === cards.length;
+    this.selectedCards = [];
+    return removedCards;
   }
 
-  /**
-   * Clear all cards from this hand
-   */
-  clear(): CardProperties[] {
-    const removedCards = [...this.handState.cards];
-    this.handState.cards = [];
-    this.handState.selectedCards = [];
-    this.updateState();
+  clear(destination: string = 'discard'): CardProperties[] {
+    const removedCards = this.getCards();
+    
+    // Use the base class method to clear cards
+    while (!this.isEmpty()) {
+      this.removeCard();
+    }
+    
+    this.selectedCards = [];
 
-    removedCards.forEach(card => {
-      const removeEvent: CardRemovedEvent = {
+    for (const card of removedCards) {
+      this.emit(HAND_EVENTS.CARD_REMOVED, {
         handId: this.handConfig.id,
         card,
-        destination: 'cleared'
-      };
-
-      this.emit(HAND_EVENTS.CARD_REMOVED, removeEvent);
-    });
+        destination,
+        handState: this.getHandState()
+      });
+    }
 
     return removedCards;
   }
@@ -186,172 +143,97 @@ export class Hand extends Pile {
   // CARD SELECTION
   // =========================================================================
 
-  /**
-   * Select a card in this hand
-   */
   selectCard(card: CardProperties): boolean {
-    if (!this.handConfig.canPlay) return false;
-
-    const cardExists = this.handState.cards.some(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
-
+    const cardExists = this.contains(card.id);
     if (!cardExists) return false;
 
-    const alreadySelected = this.handState.selectedCards.some(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
-
+    const alreadySelected = this.selectedCards.some(c => c.id === card.id);
     if (alreadySelected) return false;
 
-    if (!this.handConfig.allowMultiSelect && this.handState.selectedCards.length > 0) {
-      // Clear previous selection if multi-select is disabled
-      this.handState.selectedCards = [];
+    if (!this.handConfig.allowMultiSelect && this.selectedCards.length > 0) {
+      // Clear existing selections for single-select mode
+      this.selectedCards = [];
     }
 
-    this.handState.selectedCards.push(card);
+    this.selectedCards.push(card);
     this.emit(HAND_EVENTS.SELECTION_CHANGED, {
       handId: this.handConfig.id,
-      selectedCards: [...this.handState.selectedCards]
+      selectedCards: [...this.selectedCards]
     });
 
     return true;
   }
 
-  /**
-   * Deselect a card in this hand
-   */
   deselectCard(card: CardProperties): boolean {
-    const selectedIndex = this.handState.selectedCards.findIndex(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
-
+    const selectedIndex = this.selectedCards.findIndex(c => c.id === card.id);
     if (selectedIndex === -1) return false;
 
-    this.handState.selectedCards.splice(selectedIndex, 1);
+    this.selectedCards.splice(selectedIndex, 1);
     this.emit(HAND_EVENTS.SELECTION_CHANGED, {
       handId: this.handConfig.id,
-      selectedCards: [...this.handState.selectedCards]
+      selectedCards: [...this.selectedCards]
     });
 
     return true;
   }
 
-  /**
-   * Clear all card selections
-   */
   clearSelection(): void {
-    this.handState.selectedCards = [];
+    this.selectedCards = [];
     this.emit(HAND_EVENTS.SELECTION_CHANGED, {
       handId: this.handConfig.id,
       selectedCards: []
     });
   }
 
-  /**
-   * Toggle selection of a card
-   */
-  toggleCardSelection(card: CardProperties): boolean {
-    const isSelected = this.handState.selectedCards.some(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
-
-    if (isSelected) {
-      return this.deselectCard(card);
-    } else {
-      return this.selectCard(card);
-    }
-  }
-
   // =========================================================================
-  // ACTIONS
+  // HAND ACTIONS
   // =========================================================================
 
-  /**
-   * Play the currently selected cards
-   */
-  async playSelectedCards(target?: string, context?: any): Promise<boolean> {
-    if (!this.handConfig.canPlay || this.handState.selectedCards.length === 0) {
+  playSelectedCards(target?: string, cost?: number): boolean {
+    if (!this.handConfig.canPlay || this.selectedCards.length === 0) {
       return false;
     }
 
-    return this.playCards(this.handState.selectedCards, target, context);
-  }
-
-  /**
-   * Play specific cards from this hand
-   */
-  async playCards(cards: readonly CardProperties[], target?: string, context?: any): Promise<boolean> {
-    if (!this.handConfig.canPlay || cards.length === 0) {
-      return false;
-    }
-
-    // Check if all cards exist in this hand
-    const allCardsExist = cards.every(card => 
-      this.handState.cards.some(c => 
-        c.id === card.id || (c.suit === card.suit && c.value === card.value)
-      )
-    );
-
-    if (!allCardsExist) {
-      console.warn('Some cards do not exist in this hand');
-      return false;
-    }
-
-    const playEvent: PlayCardsEvent = {
+    const playEvent = {
       handId: this.handConfig.id,
-      cards: [...cards],
+      cards: [...this.selectedCards],
       target,
-      context,
-      cancellable: true
+      cost
     };
 
-    // Emit the event and wait for potential cancellation
-    const eventResult = this.emit(HAND_EVENTS.PLAY_CARDS, playEvent);
-
-    // If event was not cancelled, remove the cards
-    if (eventResult !== false && playEvent.cancellable) {
-      this.removeCards(cards, target || 'played');
-      this.clearSelection();
-      return true;
-    }
-
-    return false;
+    this.emit(HAND_EVENTS.PLAY_CARDS, playEvent);
+    return true;
   }
 
-  /**
-   * Request to draw cards from a source
-   */
-  async drawCards(count: number, source: string): Promise<boolean> {
-    if (!this.handConfig.canDraw || count <= 0) {
+  drawCards(count: number): boolean {
+    if (!this.handConfig.canDraw) {
       return false;
     }
 
-    if (this.handState.cardCount + count > this.handConfig.maxCards) {
-      console.warn(`Hand ${this.handConfig.name} cannot draw ${count} cards - would exceed maximum`);
+    if (this.size() + count > this.handConfig.maxCards) {
       return false;
     }
 
-    const drawEvent: DrawCardsEvent = {
+    const drawEvent = {
       handId: this.handConfig.id,
       count,
-      source,
-      cancellable: true
+      currentSize: this.size()
     };
 
-    // Emit the event and let external handlers manage the actual card transfer
-    return this.emit(HAND_EVENTS.DRAW_CARDS, drawEvent) !== false;
+    this.emit(HAND_EVENTS.DRAW_CARDS, drawEvent);
+    return true;
   }
 
-  /**
-   * Reveal or hide all cards in this hand
-   */
+  // =========================================================================
+  // VISIBILITY CONTROL
+  // =========================================================================
+
   setCardsRevealed(revealed: boolean): void {
-    if (this.handState.areCardsRevealed === revealed) return;
+    if (this.areCardsRevealed === revealed) return;
 
-    this.handState.areCardsRevealed = revealed;
-
-    const revealEvent: HandRevealEvent = {
+    this.areCardsRevealed = revealed;
+    
+    const revealEvent = {
       handId: this.handConfig.id,
       revealed
     };
@@ -359,17 +241,48 @@ export class Hand extends Pile {
     this.emit(HAND_EVENTS.HAND_REVEALED, revealEvent);
   }
 
-  /**
-   * Toggle card revelation
-   */
-  toggleCardReveal(): void {
-    this.setCardsRevealed(!this.handState.areCardsRevealed);
+  reveal(): void {
+    this.setCardsRevealed(true);
+  }
+
+  hide(): void {
+    this.setCardsRevealed(false);
+  }
+
+  toggleVisibility(): void {
+    this.setCardsRevealed(!this.areCardsRevealed);
   }
 
   // =========================================================================
   // GETTERS
   // =========================================================================
 
+  get selectedCardIds(): string[] {
+    return this.selectedCards.map(c => c.id);
+  }
+
+  get getSelectedCards(): readonly CardProperties[] {
+    return this.selectedCards;
+  }
+
+  get isRevealed(): boolean {
+    return this.areCardsRevealed;
+  }
+
+  get config(): HandConfig {
+    return { ...this.handConfig };
+  }
+
+  get isFull(): boolean {
+    return this.size() >= this.handConfig.maxCards;
+  }
+
+  // Expose cards as readonly for UI using method instead of override
+  getDisplayCards(): readonly CardProperties[] {
+    return this.getAllCards();
+  }
+
+  // Expose id and name for UI compatibility
   get id(): string {
     return this.handConfig.id;
   }
@@ -378,132 +291,140 @@ export class Hand extends Pile {
     return this.handConfig.name;
   }
 
-  get cards(): readonly CardProperties[] {
-    return this.handState.cards;
-  }
-
-  get selectedCards(): readonly CardProperties[] {
-    return this.handState.selectedCards;
-  }
-
-  get cardCount(): number {
-    return this.handState.cardCount;
-  }
-
-  get isEmpty(): boolean {
-    return this.handState.isEmpty;
-  }
-
-  get isFull(): boolean {
-    return this.handState.isFull;
-  }
-
   get isPlayerHand(): boolean {
     return this.handConfig.isPlayerHand;
   }
 
-  get areCardsRevealed(): boolean {
-    return this.handState.areCardsRevealed;
-  }
+  // =========================================================================
+  // HAND STATE
+  // =========================================================================
 
-  get canPlay(): boolean {
-    return this.handConfig.canPlay;
-  }
-
-  get canDraw(): boolean {
-    return this.handConfig.canDraw;
-  }
-
-  get config(): HandConfig {
-    return { ...this.handConfig };
-  }
-
-  get state(): HandState {
-    return { ...this.handState };
+  getHandState(): HandState {
+    return {
+      selectedCards: [...this.selectedCards],
+      isAnimating: false, // TODO: Track animation state
+      areCardsRevealed: this.areCardsRevealed,
+      isFull: this.isFull,
+      isEmpty: this.isEmpty()
+    };
   }
 
   // =========================================================================
-  // UTILITY METHODS
+  // CARD QUERIES
   // =========================================================================
 
-  /**
-   * Check if this hand contains a specific card
-   */
   hasCard(card: CardProperties): boolean {
-    return this.handState.cards.some(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
+    return this.contains(card.id);
   }
 
-  /**
-   * Check if a card is currently selected
-   */
   isCardSelected(card: CardProperties): boolean {
-    return this.handState.selectedCards.some(c => 
-      c.id === card.id || (c.suit === card.suit && c.value === card.value)
-    );
+    return this.selectedCards.some(c => c.id === card.id);
   }
 
-  /**
-   * Get cards by suit
-   */
   getCardsBySuit(suit: string): CardProperties[] {
-    return this.handState.cards.filter(card => card.suit === suit);
+    return this.getAllCards().filter(card => card.suit === suit);
   }
 
-  /**
-   * Get cards by value
-   */
-  getCardsByValue(value: number): CardProperties[] {
-    return this.handState.cards.filter(card => card.value === value);
+  getCardsByValue(value: string | number): CardProperties[] {
+    return this.getAllCards().filter(card => card.value === value);
   }
 
-  /**
-   * Sort cards in hand by value or suit
-   */
-  sortCards(by: 'value' | 'suit' = 'value'): void {
-    this.handState.cards.sort((a, b) => {
-      if (by === 'suit') {
-        return a.suit.localeCompare(b.suit) || (a.value as number) - (b.value as number);
-      } else {
-        return (a.value as number) - (b.value as number) || a.suit.localeCompare(b.suit);
+  // Add missing methods for UI compatibility
+  toggleCardSelection(card: CardProperties): boolean {
+    if (this.isCardSelected(card)) {
+      return this.deselectCard(card);
+    } else {
+      return this.selectCard(card);
+    }
+  }
+
+  // =========================================================================
+  // CARD MANIPULATION
+  // =========================================================================
+
+  sortCards(compareFn?: (a: CardProperties, b: CardProperties) => number): void {
+    // Get mutable copy, sort it, then replace cards
+    const sortedCards = this.getCards();
+    sortedCards.sort(compareFn || ((a, b) => {
+      // Default sort: by suit, then by value
+      if (a.suit !== b.suit) {
+        return a.suit.localeCompare(b.suit);
       }
-    });
+      
+      // Handle numeric and face cards
+      const aVal = typeof a.value === 'number' ? a.value : this.getFaceCardValue(a.value);
+      const bVal = typeof b.value === 'number' ? b.value : this.getFaceCardValue(b.value);
+      
+      return aVal - bVal;
+    }));
+
+    // Clear and re-add sorted cards
+    while (!this.isEmpty()) {
+      this.removeCard();
+    }
+    this.addCards(sortedCards);
   }
 
-  /**
-   * Update hand configuration
-   */
-  updateConfig(newConfig: Partial<HandConfig>): void {
-    this.handConfig = { ...this.handConfig, ...newConfig };
-    this.updateState();
+  private getFaceCardValue(value: string | number): number {
+    if (typeof value === 'number') return value;
+    
+    const faceValues: { [key: string]: number } = {
+      'A': 1, 'J': 11, 'Q': 12, 'K': 13
+    };
+    
+    return faceValues[value] || 0;
   }
 
   // =========================================================================
   // STATIC FACTORY METHODS
   // =========================================================================
 
-  static createPlayerHand(id: string, name: string, gameType: GAME_TYPE): Hand {
-    const defaultConfig = DEFAULT_HAND_CONFIGS[gameType]; // Default fallback
+  // Static factory methods for compatibility
+  static createPlayerHand(id: string, name: string, gameType?: any): Hand {
     return new Hand(id, name, {
-      ...defaultConfig,
       isPlayerHand: true,
-      showCardFaces: true
+      showCardFaces: true,
+      canDraw: true,
+      canPlay: true,
+      allowMultiSelect: true
     });
   }
 
-  static createOpponentHand(id: string, name: string, gameType: GAME_TYPE): Hand {
-    const defaultConfig = DEFAULT_HAND_CONFIGS[gameType]; // Default fallback
+  static createOpponentHand(id: string, name: string, gameType?: any): Hand {
     return new Hand(id, name, {
-      ...defaultConfig,
       isPlayerHand: false,
-      showCardFaces: false
+      showCardFaces: false,
+      canDraw: false,
+      canPlay: false,
+      allowMultiSelect: false
     });
   }
+
+  // =========================================================================
+  // COMPATIBILITY METHODS
+  // =========================================================================
+
+  // Method for playing cards
+  playCards(cards: CardProperties[]): boolean {
+    // Remove the cards from this hand
+    for (const card of cards) {
+      this.removeSpecificCard(card.id);
+    }
+
+    this.emit(HAND_EVENTS.PLAY_CARDS, {
+      handId: this.handConfig.id,
+      cards: cards
+    });
+
+    return true;
+  }
+
+  // =========================================================================
+  // LIFECYCLE
+  // =========================================================================
 
   override destroy(): void {
+    this.selectedCards = [];
     this.removeAllListeners();
-    this.handState.cards = [];
-    this.handState.selectedCards = [];
   }
 }

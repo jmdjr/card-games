@@ -6,27 +6,23 @@ export { Hand } from './hand.manager';
 export * from './hand.types';
 
 // Hand UI System
-export { HandUI } from '../ui/hand-ui';
-export * from '../ui/hand-ui.types';
+export { HandUI } from '../ui/hand.ui';
 
 // Re-export important types for convenience
 export type {
   HandConfig,
   HandState,
-  PlayCardsEvent,
-  DrawCardsEvent
-} from './hand.types';
-export type {
   HandUIConfig,
   HandUIState,
   CardPosition,
   CardRevealStyle,
   HandUIClickEvent
-} from '../ui/hand-ui.types';
+} from './hand.types';
+
+// Re-export enums
 export {
   HandLayout
-} from '../ui/hand-ui.types';
+} from './hand.types';
 
 // Re-export constants
-export { HAND_EVENTS } from './hand.types';
-export { HAND_UI_EVENTS, HAND_UI_PRESETS } from '../ui/hand-ui.types';
+export { HAND_EVENTS, HAND_UI_EVENTS, HAND_UI_PRESETS } from './hand.types';

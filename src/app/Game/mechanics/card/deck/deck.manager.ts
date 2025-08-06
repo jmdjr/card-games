@@ -19,12 +19,45 @@ export class Deck extends Pile {
   
   public readonly name: string;
   public readonly deckType: DECK_TYPE;
+  public readonly backAssetKey: string;
 
-  constructor(name: string, deckType: DECK_TYPE, cards: CardProperties[] = []) {
+  constructor(name: string, deckType: DECK_TYPE, cards: CardProperties[] = [], backAssetKey: string = 'card_back') {
     super();
     this.name = name;
     this.deckType = deckType;
+    this.backAssetKey = backAssetKey;
     this.cards = [...cards];
+    
+    // Set deck's back asset on all cards that don't already have one
+    this.setBackAssetOnCards();
+  }
+
+  // Override addCard to set deck's back asset
+  override addCard(card: CardProperties): void {
+    // Set deck's back asset if card doesn't have one
+    if (!card.backAssetKey) {
+      card.backAssetKey = this.backAssetKey;
+    }
+    super.addCard(card);
+  }
+
+  // Override addCards to set deck's back asset on all
+  override addCards(cards: CardProperties[]): void {
+    cards.forEach(card => {
+      if (!card.backAssetKey) {
+        card.backAssetKey = this.backAssetKey;
+      }
+    });
+    super.addCards(cards);
+  }
+
+  // Set deck's back asset on all cards that don't already have one
+  private setBackAssetOnCards(): void {
+    this.cards.forEach(card => {
+      if (!card.backAssetKey) {
+        card.backAssetKey = this.backAssetKey;
+      }
+    });
   }
 
   discard(card: CardProperties): void {
@@ -60,7 +93,7 @@ export class Deck extends Pile {
 export class DeckFactory {
   // Standard 52-card playing deck
   static createStandardDeck(): Deck {
-    const deck = new Deck("Standard 52-Card Deck", DECK_TYPE.POKER);
+    const deck = new Deck("Standard 52-Card Deck", DECK_TYPE.POKER, [], 'card_back');
     deck.addCards(PLAYING_CARDS);
     return deck;
   }
@@ -74,14 +107,14 @@ export class DeckFactory {
 
   // UNO deck
   static createUnoDeck(): Deck {
-    const deck = new Deck("UNO Deck", DECK_TYPE.UNO);
+    const deck = new Deck("UNO Deck", DECK_TYPE.UNO, [], 'color_back');
     deck.addCards(UNO_CARDS);
     return deck;
   }
 
   // Dice set
   static createDiceSet(): Deck {
-    const deck = new Deck("Dice Set", DECK_TYPE.DICE_GAME);
+    const deck = new Deck("Dice Set", DECK_TYPE.DICE_GAME, [], 'dice_question');
     deck.addCards(DICE_CARDS);
     return deck;
   }

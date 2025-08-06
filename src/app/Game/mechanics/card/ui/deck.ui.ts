@@ -8,7 +8,7 @@ import {
   DeckStyle,
   DeckOrientation,
   DECK_UI_PRESETS
-} from './deck-ui.types';
+} from '../deck/deck.types';
 import { CardProperties } from '../card.types';
 import { Deck, DECK_TYPE } from '../deck/deck.manager';
 import { ASSET_ATLAS } from '../../../assets.data';
@@ -120,24 +120,25 @@ export class DeckUI extends Phaser.GameObjects.Container {
       const offsetX = i * this.config.cardOffsetX;
       const offsetY = i * this.config.cardOffsetY;
 
-      const cardSprite = this.scene.add.image(offsetX, offsetY, ASSET_ATLAS, cardDatas[i].backAssetKey);
-      cardSprite.setOrigin(0.5, 0.5);
-      cardSprite.setScale(this.config.scale);
-      cardSprite.setDepth(i);
+      const cardUI = new CardUI(this.scene, offsetX, offsetY, cardDatas[i], {
+        scale: this.config.scale,
+        depth: i,
+        showFace: false // Always show card backs in deck
+      });
 
       // Add subtle shadow effect for depth
       if (this.config.shadow && i > 0) {
-        cardSprite.setTintFill(0x000000, 0.1);
+        cardUI.setShadowEffect(true, 0.1);
       }
 
-      this.add(cardSprite);
-      this.cardSprites.push(cardSprite);
+      this.add(cardUI);
+      this.cardSprites.push(cardUI);
     }
 
     // If we should show the top card and we have cards, use the last card sprite as the top card
     if (this.config.showTopCard && this.deckState.topCard && this.cardSprites.length > 0) {
       this.topCardSprite = this.cardSprites[this.cardSprites.length - 1];
-      this.topCardSprite.setDepth(this.config.maxVisibleCards + 1); // Ensure it's on top
+      this.topCardSprite.setCardDepth(this.config.maxVisibleCards + 1); // Ensure it's on top
     }
   }
 
@@ -159,8 +160,8 @@ export class DeckUI extends Phaser.GameObjects.Container {
       // If no animation, move to final position and show the card face immediately
       this.topCardSprite.setPosition(this.config.topCardOffsetX, this.config.topCardOffsetY);
       const cardScale = this.config.topCardScale || this.config.scale;
-      this.topCardSprite.setScale(cardScale);
-      this.topCardSprite.setFrame(this.deckState.topCard.assetKey);
+      this.topCardSprite.setCardScale(cardScale);
+      this.topCardSprite.showFace();
     }
   }
 
@@ -177,28 +178,14 @@ export class DeckUI extends Phaser.GameObjects.Container {
       if (!this.topCardSprite) return;
 
       // Phase 1: Move to final position while starting to flip
-      this.scene.tweens.add({
-        targets: this.topCardSprite,
-        x: finalX,
-        y: finalY,
-        scaleX: 0, // Compress horizontally during movement
-        scaleY: cardScale, // Scale to final size
-        duration: 300,
-        ease: 'Power2',
-        onComplete: () => {
-          if (!this.topCardSprite) return;
-          
-          // Change to card face at the midpoint of flip
-          this.topCardSprite.setFrame(card.assetKey);
-          
-          // Phase 2: Complete the flip (expand back to final scale)
-          this.scene.tweens.add({
-            targets: this.topCardSprite,
-            scaleX: cardScale,
-            duration: 200,
-            ease: 'Power2'
-          });
-        }
+      this.topCardSprite.animateMoveTo(finalX, finalY, 300, {
+        scale: cardScale,
+        ease: 'Power2'
+      }).then(() => {
+        if (!this.topCardSprite) return;
+        
+        // Phase 2: Flip to show face
+        this.topCardSprite.animateFlip(200);
       });
     });
   }
@@ -218,40 +205,24 @@ export class DeckUI extends Phaser.GameObjects.Container {
       const targetX = cardIndex * this.config.cardOffsetX;
       const targetY = cardIndex * this.config.cardOffsetY;
 
-      // Phase 1: Start reverse flip (compress horizontally)
-      this.scene.tweens.add({
-        targets: this.topCardSprite,
-        scaleX: 0,
-        duration: 200,
-        ease: 'Power2',
-        onComplete: () => {
-          if (!this.topCardSprite) return;
+      // Phase 1: Flip to show back
+      this.topCardSprite.animateFlip(200).then(() => {
+        if (!this.topCardSprite) return;
+        
+        // Phase 2: Move back to deck position
+        this.topCardSprite.animateMoveTo(targetX, targetY, 300, {
+          scale: this.config.scale,
+          ease: 'Power2'
+        }).then(() => {
+          // Reset the depth back to its original position in the stack
+          if (this.topCardSprite) {
+            this.topCardSprite.setCardDepth(cardIndex);
+            this.topCardSprite = null; // Clear reference but don't destroy the sprite
+          }
           
-          // Change to card back at the midpoint of flip
-          const cardData = this.deckData.peek() as CardProperties;
-          this.topCardSprite.setFrame(cardData?.backAssetKey ?? deckData.backAssetKey);
-          
-          // Phase 2: Move back to deck while completing flip
-          this.scene.tweens.add({
-            targets: this.topCardSprite,
-            x: targetX,
-            y: targetY,
-            scaleX: this.config.scale, // Back to original scale
-            scaleY: this.config.scale,
-            duration: 300,
-            ease: 'Power2',
-            onComplete: () => {
-              // Reset the depth back to its original position in the stack
-              if (this.topCardSprite) {
-                this.topCardSprite.setDepth(cardIndex);
-                this.topCardSprite = null; // Clear reference but don't destroy the sprite
-              }
-              
-              this.isAnimating = false;
-              resolve();
-            }
-          });
-        }
+          this.isAnimating = false;
+          resolve();
+        });
       });
     });
   }
@@ -352,15 +323,16 @@ export class DeckUI extends Phaser.GameObjects.Container {
     if (this.isAnimating || this.deckState.isEmpty) return;
 
     // Hover effect - lift cards slightly
-    this.cardSprites.forEach((sprite, index) => {
-      this.scene.tweens.add({
-        targets: sprite,
-        y: sprite.y - (index * 3),
-        scaleX: this.config.scale * 1.1,
-        scaleY: this.config.scale * 1.1,
-        duration: 200,
-        ease: 'Power2'
-      });
+    this.cardSprites.forEach((cardUI, index) => {
+      cardUI.animateMoveTo(
+        cardUI.x,
+        cardUI.y - (index * 3),
+        200,
+        {
+          scale: this.config.scale * 1.1,
+          ease: 'Power2'
+        }
+      );
     });
   }
 
@@ -368,15 +340,16 @@ export class DeckUI extends Phaser.GameObjects.Container {
     if (this.isAnimating) return;
 
     // Reset hover effect
-    this.cardSprites.forEach((sprite, index) => {
-      this.scene.tweens.add({
-        targets: sprite,
-        y: index * this.config.cardOffsetY,
-        scaleX: this.config.scale,
-        scaleY: this.config.scale,
-        duration: 200,
-        ease: 'Power2'
-      });
+    this.cardSprites.forEach((cardUI, index) => {
+      cardUI.animateMoveTo(
+        cardUI.x,
+        index * this.config.cardOffsetY,
+        200,
+        {
+          scale: this.config.scale,
+          ease: 'Power2'
+        }
+      );
     });
   }
 
@@ -460,9 +433,9 @@ export class DeckUI extends Phaser.GameObjects.Container {
       if (this.topCardSprite) {
         const cardIndex = this.cardSprites.indexOf(this.topCardSprite);
         this.topCardSprite.setPosition(cardIndex * this.config.cardOffsetX, cardIndex * this.config.cardOffsetY);
-        this.topCardSprite.setScale(this.config.scale);
-        this.topCardSprite.setFrame(this.deckData.peek()?.backAssetKey || '');
-        this.topCardSprite.setDepth(cardIndex);
+        this.topCardSprite.setCardScale(this.config.scale);
+        this.topCardSprite.showBack();
+        this.topCardSprite.setCardDepth(cardIndex);
         this.topCardSprite = null; // Clear reference but don't destroy
       }
     }
@@ -526,55 +499,36 @@ export class DeckUI extends Phaser.GameObjects.Container {
       const centerY = this.scene.cameras.main.centerY;
       
       // Phase 1: Move card to center and scale up
-      this.scene.tweens.add({
-        targets: topCard,
-        x: centerX - (this._configedWidth() / 2),
-        y: centerY - (this._configedHeight() / 2),
-        scaleX: this.config.scale * 1.5,
-        scaleY: this.config.scale * 1.5,
-        duration: this.config.drawAnimationDuration * 0.3,
-        ease: 'Power2',
-        onComplete: () => {
-          // Phase 2: First half of flip (compress horizontally to simulate rotation)
-          this.scene.tweens.add({
-            targets: topCard,
-            scaleX: 0,
-            duration: this.config.drawAnimationDuration * 0.2,
-            ease: 'Power2',
-            onComplete: () => {
-              // Change to card face at the midpoint of flip
-              topCard.setFrame(card.assetKey);
-              
-              // Phase 3: Second half of flip (expand back to normal)
-              this.scene.tweens.add({
-                targets: topCard,
-                scaleX: this.config.scale * 1.5,
-                duration: this.config.drawAnimationDuration * 0.2,
-                ease: 'Power2',
-                onComplete: () => {
-                  // Phase 4: Pause to show the card
-                  this.scene.time.delayedCall(this.config.drawAnimationDuration * 0.3, () => {
-                    // Phase 5: Fade out or move to final position
-                    this.scene.tweens.add({
-                      targets: topCard,
-                      alpha: 0,
-                      scaleX: this.config.scale * 0.5,
-                      scaleY: this.config.scale * 0.5,
-                      y: topCard.y - 100,
-                      duration: this.config.drawAnimationDuration * 0.3,
-                      ease: 'Power2',
-                      onComplete: () => {
-                        this.isAnimating = false;
-                        this.deckState.isDrawing = false;
-                        resolve();
-                      }
-                    });
-                  });
-                }
-              });
-            }
-          });
+      topCard.animateMoveTo(
+        centerX - (this._configedWidth() / 2),
+        centerY - (this._configedHeight() / 2),
+        this.config.drawAnimationDuration * 0.3,
+        {
+          scale: this.config.scale * 1.5,
+          ease: 'Power2'
         }
+      ).then(() => {
+        // Phase 2: Flip to show face
+        topCard.animateFlip(this.config.drawAnimationDuration * 0.4).then(() => {
+          // Phase 3: Pause to show the card
+          this.scene.time.delayedCall(this.config.drawAnimationDuration * 0.3, () => {
+            // Phase 4: Fade out
+            topCard.animateMoveTo(
+              topCard.x,
+              topCard.y - 100,
+              this.config.drawAnimationDuration * 0.3,
+              {
+                scale: this.config.scale * 0.5,
+                alpha: 0,
+                ease: 'Power2'
+              }
+            ).then(() => {
+              this.isAnimating = false;
+              this.deckState.isDrawing = false;
+              resolve();
+            });
+          });
+        });
       });
     });
   }
@@ -638,55 +592,57 @@ export class DeckUI extends Phaser.GameObjects.Container {
     return new Promise(resolve => {
       this.isAnimating = true;
       this.deckState.isShuffling = true;
-      // this.topCardSprite?.setFrame(this.getBackFrameName());
+      
+      // Hide the top card if it's showing
       this.topCardSprite?.setVisible(false);
 
       const totalDuration = this.config.shuffleAnimationDuration;
       const shufflePhases = 3; // Number of random movements
-      const phaseDuration = totalDuration / (shufflePhases); // +2 for settle time
+      const phaseDuration = totalDuration / shufflePhases;
 
       const performShufflePhase = () => {
         // Random shuffle movements for this phase
-        const phasePromises = this.cardSprites.map((sprite, index) => {
+        const phasePromises = this.cardSprites.map((cardUI, index) => {
           return new Promise<void>(phaseResolve => {
             const originalX = index * this.config.cardOffsetX;
             const originalY = index * this.config.cardOffsetY;
 
-            const tweenChain: any[] = [];
-            for (let i = 0; i < shufflePhases; i++) {
-              const randomX = (Math.random() - 0.5) * 30; // Reduced range for more controlled movement
-              const randomY = (Math.random() - 0.5) * 50;
-              const randomRotation = (Math.random() - 0.5) * 0.5;
-              tweenChain.push(
-                this.scene.tweens.create({
-                  targets: sprite,
-                  x: sprite.x + randomX,
-                  y: sprite.y + randomY,
-                  rotation: randomRotation,
-                  duration: phaseDuration,
-                  ease: 'Sine.easeInOut',
-                }));
-              tweenChain.push(
-                this.scene.tweens.create({
-                  targets: sprite,
-                  x: originalX,
-                  y: originalY,
-                  rotation: 0,
-                  duration: phaseDuration * 2, // Take a bit longer to settle
-                  ease: 'Back.easeOut',
-                })
-              );
-            }
+            const animationChain = async () => {
+              for (let i = 0; i < shufflePhases; i++) {
+                const randomX = (Math.random() - 0.5) * 30;
+                const randomY = (Math.random() - 0.5) * 50;
+                const randomRotation = (Math.random() - 0.5) * 0.5;
+                
+                // Random movement
+                await cardUI.animateMoveTo(
+                  originalX + randomX,
+                  originalY + randomY,
+                  phaseDuration,
+                  {
+                    rotation: randomRotation,
+                    ease: 'Sine.easeInOut'
+                  }
+                );
+                
+                // Return to position
+                await cardUI.animateMoveTo(
+                  originalX,
+                  originalY,
+                  phaseDuration * 2,
+                  {
+                    rotation: 0,
+                    ease: 'Back.easeOut'
+                  }
+                );
+              }
+              phaseResolve();
+            };
 
-            this.scene.tweens.chain({
-              tweens: tweenChain,
-              onComplete: () => phaseResolve()
-            });
+            animationChain();
           });
         });
 
         Promise.all(phasePromises).then(() => {
-          // Small delay between phases for visual effect
           this.isAnimating = false;
           this.deckState.isShuffling = false;
           resolve();
