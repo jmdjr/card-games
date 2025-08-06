@@ -1,5 +1,4 @@
 // Card Game System - Type Definitions
-
 export enum CardType {
   DICE = 'dice',
   UNO_CARD = 'uno_card',
@@ -74,6 +73,7 @@ export interface CardProperties {
   // Core identification
   id: string;
   assetKey: string; // The kenny_cards filename
+  backAssetKey?: string; // The kenny_cards back filename.
   
   // Card categorization
   type: CardType;
@@ -92,16 +92,14 @@ export interface CardProperties {
   
   // Additional metadata
   description?: string;
+
+  // extended properties for custom games
+  data?: {
+    [key in string]: any; 
+  };
   gameRules?: {
     [gameName: string]: any;
   };
-}
-
-export interface GameDeck {
-  name: string;
-  cards: CardProperties[];
-  gameType: string;
-  shuffled: boolean;
 }
 
 export interface CardGameConfig {

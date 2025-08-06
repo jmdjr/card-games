@@ -1,9 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import Phaser from 'phaser';
-import CoreScene from 'src/app/Game/scenes/core_scene';
 
 import uiConfig from '../../Game/ui.config.json';
 import { GameConfig } from '../../Game/mechanics/ui/ui.config';
+import { HandDemoScene } from '../../Game/examples/hand.examples';
 
 @Component({
   selector: 'app-PhaserGameFrame',
@@ -18,7 +18,7 @@ export class PhaserGameFrameComponent implements OnInit {
   constructor() { }
 
   ngOnInit() {
-    this.coreScene = new CoreScene();
+    this.coreScene = new HandDemoScene();
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.WEBGL,

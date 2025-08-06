@@ -15,7 +15,7 @@ import * as KennyCards from '../../../../assets/game/art/kenny_cards/kenny_cards
 
 function createPlayingCard(
   assetKey: string, 
-  suit: CardSuit, 
+  suit: CardSuit,
   value: CardValue, 
   displayName: string
 ): CardProperties {
@@ -24,6 +24,7 @@ function createPlayingCard(
   return {
     id: `playing_${suit}_${value}`,
     assetKey,
+    backAssetKey: KennyCards.CARD_BACK,
     type: CardType.PLAYING_CARD,
     suit,
     color,
@@ -46,6 +47,7 @@ function createUnoCard(
   return {
     id: `uno_${color}_${value}`,
     assetKey,
+    backAssetKey: KennyCards.COLOR_BACK,
     type: CardType.UNO_CARD,
     suit: CardSuit.NONE,
     color,
@@ -67,6 +69,7 @@ function createDice(
   return {
     id: `dice_${isDecorated ? 'decorated_' : ''}${value}`,
     assetKey,
+    backAssetKey: KennyCards.DICE_QUESTION,
     type: CardType.DICE,
     suit: CardSuit.NONE,
     color: CardColor.NONE,
@@ -75,26 +78,6 @@ function createDice(
     shortName: displayName,
     isPlayable: true,
     isSpecial: value === DiceValue.EMPTY || value === DiceValue.QUESTION,
-    canStack: false
-  };
-}
-
-function createSpecialCard(
-  assetKey: string, 
-  type: CardType, 
-  displayName: string
-): CardProperties {
-  return {
-    id: `special_${assetKey}`,
-    assetKey,
-    type,
-    suit: CardSuit.NONE,
-    color: CardColor.NONE,
-    value: CardValue.EMPTY,
-    displayName,
-    shortName: displayName,
-    isPlayable: false,
-    isSpecial: true,
     canStack: false
   };
 }
@@ -263,6 +246,7 @@ export const SPECIAL_CARDS: CardProperties[] = [
   {
     id: 'joker_black',
     assetKey: KennyCards.CARD_JOKER_BLACK,
+    backAssetKey: KennyCards.CARD_BACK,
     type: CardType.JOKER,
     suit: CardSuit.NONE,
     color: CardColor.BLACK,
@@ -276,6 +260,7 @@ export const SPECIAL_CARDS: CardProperties[] = [
   {
     id: 'joker_red',
     assetKey: KennyCards.CARD_JOKER_RED,
+    backAssetKey: KennyCards.CARD_BACK,
     type: CardType.JOKER,
     suit: CardSuit.NONE,
     color: CardColor.RED,
@@ -286,12 +271,6 @@ export const SPECIAL_CARDS: CardProperties[] = [
     isSpecial: true,
     canStack: false
   },
-  
-  // Utility Cards
-  createSpecialCard(KennyCards.CARD_BACK, CardType.SPECIAL, "Card Back"),
-  createSpecialCard(KennyCards.CARD_EMPTY, CardType.SPECIAL, "Empty Card"),
-  createSpecialCard(KennyCards.COLOR_BACK, CardType.SPECIAL, "Color Card Back"),
-  createSpecialCard(KennyCards.COLOR_EMPTY, CardType.SPECIAL, "Empty Color Card"),
 ];
 
 // =============================================================================

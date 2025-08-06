@@ -1,5 +1,5 @@
 // Card Game System - Deck Management
-import { CardProperties, GameDeck, CardType, CardGameConfig } from './card.types';
+import { CardProperties, CardType, CardGameConfig } from '../card.types';
 import { 
   ALL_DEFINED_CARDS, 
   DICE_CARDS, 
@@ -9,115 +9,47 @@ import {
   getCardsByType,
   getCardsBySuit,
   getCardsByColor
-} from './card.definitions';
+} from '../card.definitions';
+import { Pile } from '../pile/pile.manager';
 
-export class Deck {
-  private cards: CardProperties[] = [];
+export class Deck extends Pile {
+
+  // Tracks cards that have been removed from the deck
   private discardPile: CardProperties[] = [];
+  
   public readonly name: string;
-  public readonly gameType: GAME_TYPE;
+  public readonly deckType: DECK_TYPE;
 
-  constructor(name: string, gameType: GAME_TYPE, cards: CardProperties[] = []) {
+  constructor(name: string, deckType: DECK_TYPE, cards: CardProperties[] = []) {
+    super();
     this.name = name;
-    this.gameType = gameType;
+    this.deckType = deckType;
     this.cards = [...cards];
   }
 
-  // Basic deck operations
-  addCard(card: CardProperties): void {
-    this.cards.push(card);
-  }
-
-  addCards(cards: CardProperties[]): void {
-    this.cards.push(...cards);
-  }
-
-  drawCard(): CardProperties | null {
-    return this.cards.pop() || null;
-  }
-
-  drawCards(count: number): CardProperties[] {
-    const drawn: CardProperties[] = [];
-    for (let i = 0; i < count && this.cards.length > 0; i++) {
-      const card = this.drawCard();
-      if (card) drawn.push(card);
-    }
-    return drawn;
-  }
-
-  peek(): CardProperties | null {
-    return this.cards[this.cards.length - 1] || null;
-  }
-
-  peekMultiple(count: number): CardProperties[] {
-    return this.cards.slice(-count);
-  }
-
-  // Deck manipulation
-  shuffle(): void {
-    for (let i = this.cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
-    }
-  }
-
-  cut(position?: number): void {
-    const cutPoint = position || Math.floor(Math.random() * this.cards.length);
-    const topHalf = this.cards.slice(0, cutPoint);
-    const bottomHalf = this.cards.slice(cutPoint);
-    this.cards = [...bottomHalf, ...topHalf];
-  }
-
-  // Discard pile management
   discard(card: CardProperties): void {
-    this.discardPile.push(card);
+    this.discardPile.unshift(card);
   }
 
   getTopDiscard(): CardProperties | null {
-    return this.discardPile[this.discardPile.length - 1] || null;
+    return this.discardPile[0] || null;
   }
 
-  reshuffleDiscard(): void {
+  reshuffleDiscard(includeTop: boolean = true): void {
     // Keep the top discard card, reshuffle the rest back into deck
-    const topDiscard = this.discardPile.pop();
+    const topDiscard = includeTop ? this.discardPile.shift() : null;
     this.cards.push(...this.discardPile);
     this.discardPile = topDiscard ? [topDiscard] : [];
     this.shuffle();
-  }
-
-  // Deck information
-  size(): number {
-    return this.cards.length;
   }
 
   discardSize(): number {
     return this.discardPile.length;
   }
 
-  isEmpty(): boolean {
-    return this.cards.length === 0;
-  }
-
   reset(): void {
     this.cards.push(...this.discardPile);
     this.discardPile = [];
-  }
-
-  // Search and filter
-  contains(cardId: string): boolean {
-    return this.cards.some(card => card.id === cardId);
-  }
-
-  findCard(cardId: string): CardProperties | null {
-    return this.cards.find(card => card.id === cardId) || null;
-  }
-
-  getCards(): CardProperties[] {
-    return [...this.cards];
-  }
-
-  getCardsByType(type: CardType): CardProperties[] {
-    return this.cards.filter(card => card.type === type);
   }
 }
 
@@ -128,7 +60,7 @@ export class Deck {
 export class DeckFactory {
   // Standard 52-card playing deck
   static createStandardDeck(): Deck {
-    const deck = new Deck("Standard 52-Card Deck", GAME_TYPE.POKER);
+    const deck = new Deck("Standard 52-Card Deck", DECK_TYPE.POKER);
     deck.addCards(PLAYING_CARDS);
     return deck;
   }
@@ -142,25 +74,25 @@ export class DeckFactory {
 
   // UNO deck
   static createUnoDeck(): Deck {
-    const deck = new Deck("UNO Deck", GAME_TYPE.UNO);
+    const deck = new Deck("UNO Deck", DECK_TYPE.UNO);
     deck.addCards(UNO_CARDS);
     return deck;
   }
 
   // Dice set
   static createDiceSet(): Deck {
-    const deck = new Deck("Dice Set", GAME_TYPE.DICE_GAME);
+    const deck = new Deck("Dice Set", DECK_TYPE.DICE_GAME);
     deck.addCards(DICE_CARDS);
     return deck;
   }
 
   // Custom deck builder
   static createCustomDeck(
-    name: string, 
-    gameType: GAME_TYPE, 
-    cardTypes: CardType[] = []
+    name: string,
+    deckType: DECK_TYPE,
+    cardTypes: CardType[] = [],
   ): Deck {
-    const deck = new Deck(name, gameType);
+    const deck = new Deck(name, deckType);
     
     cardTypes.forEach(type => {
       const cards = getCardsByType(type);
@@ -174,12 +106,17 @@ export class DeckFactory {
 // =============================================================================
 // GAME CONFIGURATIONS
 // =============================================================================
+export enum DECK_TYPE {
+  POKER = 'poker',
+  UNO = 'uno',
+  DICE_GAME = 'dice_game'
+}
+
 export enum GAME_TYPE {
   POKER = 'poker',
   BLACKJACK = 'blackjack',
   UNO = 'uno',
   DICE_GAME = 'dice_game',
-  DISCARD_PILE = 'discard_pile'
 }
 
 export const GAME_CONFIGS: { [key in GAME_TYPE]: CardGameConfig } = {
@@ -188,7 +125,8 @@ export const GAME_CONFIGS: { [key in GAME_TYPE]: CardGameConfig } = {
     supportedCardTypes: [CardType.PLAYING_CARD],
     deckSize: 52,
     maxPlayers: 10,
-    minPlayers: 2
+    minPlayers: 2,
+
   },
   [GAME_TYPE.BLACKJACK]: {
     name: "Blackjack",
@@ -211,14 +149,6 @@ export const GAME_CONFIGS: { [key in GAME_TYPE]: CardGameConfig } = {
     supportedCardTypes: [CardType.DICE],
     deckSize: 16,
     maxPlayers: 6,
-    minPlayers: 1
-  },
-
-  [GAME_TYPE.DISCARD_PILE]: {
-    name: "Discard Pile",
-    supportedCardTypes: [CardType.PLAYING_CARD, CardType.UNO_CARD, CardType.JOKER, CardType.SPECIAL],
-    deckSize: 0, // Discard pile has no fixed size
-    maxPlayers: 1,
     minPlayers: 1
   }
 };
@@ -286,7 +216,7 @@ export class GameSession {
     const hands: { [playerName: string]: CardProperties[] } = {};
     
     this.players.forEach(player => {
-      hands[player] = this.deck.drawCards(cardsPerPlayer);
+      hands[player] = this.deck.removeCards(cardsPerPlayer);
     });
     
     return hands;

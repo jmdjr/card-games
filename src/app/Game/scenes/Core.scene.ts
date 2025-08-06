@@ -1,14 +1,16 @@
 import ASSETS from '../assets.data';
-import Phaser from 'phaser';
+import Phaser, { GameObjects } from 'phaser';
 
 import { GameConsole } from '../services/console-ui/console-ui';
 import { Inject } from '../services/di/di.system';
 import { UIBuilder } from '../mechanics/ui/uiFormatter';
-import { createQuickPhaserDeckUI, PhaserDeckUIExamples } from '../ui/card/deck-ui.examples';
-import { DeckClickEvent, DeckStyle } from '../ui/card/deck-ui.types';
-import { PhaserDeck } from '../ui/card/phaser-deck';
+import { UI_CONFIG_KEY } from '../mechanics/ui/ui.config';
 
 export default class CoreScene extends Phaser.Scene {
+
+  @Inject(UIBuilder.name)
+  private _uiBuilder: UIBuilder;
+
   private uiCreation: (() => void)[] = [
     () => { // Create the game console
       const console = new GameConsole(this, 0, 0, 800, 600);
@@ -21,26 +23,22 @@ export default class CoreScene extends Phaser.Scene {
         }
       });
     },
-
-    () => {
-      // Demo: Create example deck UIs
-      const standardDeck = createQuickPhaserDeckUI(this, 100, 100, DeckStyle.STANDARD, true);
-      const unoDeck = createQuickPhaserDeckUI(this, 300, 100, DeckStyle.UNO, false);
-      const diceSet = createQuickPhaserDeckUI(this, 500, 100, DeckStyle.DICE, true);
-      PhaserDeckUIExamples.createAnimatedDemo(this);
-      console.log('Demo deck UIs created:', { standardDeck, unoDeck, diceSet });
-
-      standardDeck.on(PhaserDeck.Events.DECK_CLICK, async (event: DeckClickEvent) => {
-        await standardDeck.shuffleDeck();
-      });
-    },
   ];
 
-  @Inject(UIBuilder.name)
-  private _uiBuilder: UIBuilder;
+  constructor(key: string) {
+    super(key ?? "CoreScene");
+  }
 
-  constructor() {
-    super("CoreScene");
+  protected addUI(key: UI_CONFIG_KEY, construct: () => GameObjects.GameObject & Phaser.GameObjects.Components.Transform | void): void {
+    if (!construct) return;
+
+    this.uiCreation.push(() => {
+      const element = construct();
+      if (element) {
+        element.setName(key);
+        this._uiBuilder.addElement(key, element.setPosition.bind(element));
+      }
+    });
   }
 
   init() {
@@ -66,3 +64,4 @@ export default class CoreScene extends Phaser.Scene {
     super.update(time, delta);
   }
 }
+

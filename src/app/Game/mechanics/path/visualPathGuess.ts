@@ -1,4 +1,4 @@
-import { GameEvents } from "../../scenes/core_scene";
+import { GameEvents } from "../../scenes/Core.scene";
 import { ButtonPanel } from "../button/buttonPanel";
 import { LabeledButton } from "../button/labeledButton";
 import { PathSequence } from "./path";

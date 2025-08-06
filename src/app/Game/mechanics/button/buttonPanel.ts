@@ -1,7 +1,7 @@
 import { Asset, getAssetByType } from '../../assets.data';
 import Button from './button';
 import Phaser, { GameObjects } from 'phaser';
-import CoreScene, { GameEvents } from '../../scenes/core_scene';
+import CoreScene, { GameEvents } from '../../scenes/Core.scene';
 import { LabeledButton } from './labeledButton';
 import { VisualPathGuess } from '../path/visualPathGuess';
 import { PathSequence } from '../path/path';

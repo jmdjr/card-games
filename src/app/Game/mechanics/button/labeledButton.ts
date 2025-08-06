@@ -1,5 +1,5 @@
 import { Asset } from "../../assets.data";
-import CoreScene from "../../scenes/core_scene";
+import CoreScene from "../../scenes/Core.scene";
 import Button from "./button";
 
 export class LabeledButton extends Phaser.GameObjects.Container {

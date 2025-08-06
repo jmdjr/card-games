@@ -1,5 +1,5 @@
 import { Asset } from "../../assets.data";
-import CoreScene from "../../scenes/core_scene";
+import CoreScene from "../../scenes/Core.scene";
 import { ButtonSetEvents, IButtonEventSetter } from "./buttonSetEvents";
 
 export default class Button extends Phaser.GameObjects.Sprite implements IButtonEventSetter<Button> {
