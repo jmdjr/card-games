@@ -20,6 +20,10 @@ export class CardUI extends Phaser.GameObjects.Image {
   private _showingFace: boolean = false;
   private _isAnimating: boolean = false;
 
+  get id(): string {
+    return this.cardData.id;
+  }
+
   constructor(
     scene: Phaser.Scene,
     x: number,
@@ -33,7 +37,7 @@ export class CardUI extends Phaser.GameObjects.Image {
     
     this.cardData = card;
     this.config = {
-      scale: 1,
+      scale: 3,
       interactive: false,
       showFace: false,
       depth: 0,
@@ -285,39 +289,5 @@ export class CardUI extends Phaser.GameObjects.Image {
     } else {
       this.clearTint();
     }
-  }
-
-  // =========================================================================
-  // STATIC FACTORY METHODS
-  // =========================================================================
-
-  static createFaceUp(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    card: CardProperties,
-    config: CardUIConfig = {}
-  ): CardUI {
-    return new CardUI(scene, x, y, card, { ...config, showFace: true });
-  }
-
-  static createFaceDown(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    card: CardProperties,
-    config: CardUIConfig = {}
-  ): CardUI {
-    return new CardUI(scene, x, y, card, { ...config, showFace: false });
-  }
-
-  static createInteractive(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    card: CardProperties,
-    config: CardUIConfig = {}
-  ): CardUI {
-    return new CardUI(scene, x, y, card, { ...config, interactive: true });
   }
 }

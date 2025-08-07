@@ -1,4 +1,4 @@
-import { DeckUIConfig, DeckStyle, DeckOrientation } from '../mechanics/card/deck/deck.types';
+import { DeckUIConfig, DeckStyle, PileOrientation } from '../mechanics/card/deck/deck.types';
 import { Deck, DeckFactory, DECK_TYPE } from '../mechanics/card/deck/deck.manager';
 import Phaser from 'phaser';
 import { DeckUI } from '../deck/ui/deck-ui';
@@ -51,7 +51,7 @@ export class DeckUIExamples {
       showTopCard: false, // Hide top card for UNO draw pile
       showCardCount: true,
       clickable: true,
-      orientation: DeckOrientation.VERTICAL,
+      orientation: PileOrientation.VERTICAL,
       cardOffsetX: 1,
       cardOffsetY: 2,
       width: 60,
@@ -89,7 +89,7 @@ export class DeckUIExamples {
       showTopCard: true,
       showCardCount: false, // Don't show count for dice
       clickable: true,
-      orientation: DeckOrientation.HORIZONTAL,
+      orientation: PileOrientation.HORIZONTAL,
       cardOffsetX: 5,
       cardOffsetY: 0,
       width: 50,

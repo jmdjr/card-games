@@ -2,39 +2,45 @@
 // Demonstrates the complete event-driven Table system with Players, Deck, Hands, and Discard Pile
 
 import Phaser from 'phaser';
-import { Table, TABLE_EVENTS } from '../mechanics/card/table/table.manager';
-import { Player } from '../mechanics/card/player/player.manager';
-import { Hand } from '../mechanics/card/hand/hand.manager';
-import { DeckFactory } from '../mechanics/card/deck/deck.manager';
-import { Pile } from '../mechanics/card/pile/pile.manager';
+import { Table, TABLE_EVENTS, Player, CardTransferRequest } from '../mechanics/card/table/table.manager';
+import { Hand, HAND_EVENTS, HandSelectionChangedEvent } from '../mechanics/card/hand/hand.manager';
+import { Deck, DeckFactory } from '../mechanics/card/deck/deck.manager';
+import { Pile, PILE_EVENTS, PileCardEvent } from '../mechanics/card/pile/pile.manager';
 import { DeckUI } from '../mechanics/card/ui/deck.ui';
 import { HandUI } from '../mechanics/card/ui/hand.ui';
 import { HandLayout } from '../mechanics/card/hand/hand.types';
 import { CardUI } from '../mechanics/card/ui/card.ui';
 import CoreScene from '../scenes/Core.scene';
-import { CardProperties } from '../mechanics/card/card.types';
+import { PileUI } from '../mechanics/card/ui/pile.ui';
 
 export class TableDemoScene extends CoreScene {
   private table!: Table;
   private players: Player[] = [];
-  private deck!: any; // Deck instance
+  private deck!: Deck;
   private discardPile!: Pile;
+  private hands: Hand[] = [];
   
   // UI Components
   private deckUI!: DeckUI;
-  private discardPileUI!: Phaser.GameObjects.Container;
+  private discardPileUI!: PileUI;
   private playerHandUIs: HandUI[] = [];
   private topDiscardCard: CardUI | null = null;
 
   // Table positions
-  private readonly SCREEN_CENTER = { x: 400, y: 300 };
-  private readonly DECK_POSITION = { x: 320, y: 300 };
+  private readonly TABLE_POSITION = { x: 400, y: 300 };
+  private readonly DECK_POSITION = { x: 400, y: 300 };
   private readonly DISCARD_POSITION = { x: 480, y: 300 };
+  private readonly RADIUS = 150;
+  private readonly BOTTOM = this.DECK_POSITION.y + this.RADIUS;
+  private readonly LEFT = this.DECK_POSITION.x - this.RADIUS;
+  private readonly TOP = this.DECK_POSITION.y - this.RADIUS;
+  private readonly RIGHT = this.DECK_POSITION.x + this.RADIUS;
+  
   private readonly PLAYER_POSITIONS = [
-    { x: 400, y: 500, name: 'South Player' },  // Bottom (revealed to player)
-    { x: 100, y: 300, name: 'West Player' },   // Left
-    { x: 400, y: 100, name: 'North Player' },  // Top
-    { x: 700, y: 300, name: 'East Player' }    // Right
+    { x: this.DECK_POSITION.x, y: this.BOTTOM, name: 'South Player' },  // Bottom (revealed to player)
+    { x: this.LEFT, y: this.DECK_POSITION.y, name: 'West Player' },   // Left
+    { x: this.DECK_POSITION.x, y: this.TOP, name: 'North Player' },  // Top
+    { x: this.RIGHT, y: this.DECK_POSITION.y, name: 'East Player' }    // Right
   ];
 
   constructor() {
@@ -68,29 +74,35 @@ export class TableDemoScene extends CoreScene {
   }
 
   private setupPlayers(): void {
-    // Create 4 players with hands
+    // Create 4 players and hands
     for (let i = 0; i < 4; i++) {
       const position = this.PLAYER_POSITIONS[i];
-      const player = new Player({
+      
+      // Create player object
+      const player: Player = {
         id: `player-${i}`,
         name: position.name,
-        isHuman: i === 0
-      });
+        isHuman: i === 0,
+        piles: new Map()
+      };
       
       // Create a hand for each player
-      const hand = new Hand(`hand-${i}`, `${position.name} Hand`, {
+      const hand = new Hand({
+        id: `hand-${i}`,
+        name: `${position.name} Hand`,
         maxCards: 10,
-        isPlayerHand: i === 0, // First player (bottom) is the human player
-        showCardFaces: i === 0, // Only show human player's cards
+        isPlayerHand: i === 0,
+        showCardFaces: i === 0,
         allowMultiSelect: i === 0
       });
 
-      // Add hand to player
-      player.addPile(`hand-${i}`, hand);
+      // Add hand to player's piles
+      player.piles.set(`hand-${i}`, hand);
       
       // Register player with table
-      this.table.addPlayer(`player-${i}`, player);
+      this.table.addPlayer(player);
       this.players.push(player);
+      this.hands.push(hand);
 
       console.log(`Created ${position.name} with hand`);
     }
@@ -102,7 +114,10 @@ export class TableDemoScene extends CoreScene {
     this.deck.shuffle();
     
     // Create discard pile
-    this.discardPile = new Pile();
+    this.discardPile = new Pile({
+      id: 'discard',
+      name: 'Discard Pile'
+    });
     
     // Register piles with table
     this.table.registerPile('deck', this.deck);
@@ -119,18 +134,24 @@ export class TableDemoScene extends CoreScene {
       this.DECK_POSITION.y,
       this.deck,
       {
-        scale: 0.6,
         showCardCount: true
       }
     );
 
-    // Create discard pile UI container
-    this.discardPileUI = this.add.container(this.DISCARD_POSITION.x, this.DISCARD_POSITION.y);
+    // Create discard pile UI
+    this.discardPileUI = new PileUI(
+      this,
+      this.DISCARD_POSITION.x,
+      this.DISCARD_POSITION.y,
+      this.discardPile,
+      {
+        showCardCount: true
+      }
+    );
 
     // Create hand UIs for each player
-    this.players.forEach((player, index) => {
+    this.hands.forEach((hand, index) => {
       const position = this.PLAYER_POSITIONS[index];
-      const hand = player.getPile(`hand-${index}`) as Hand; // Get the hand
       
       const handUI = new HandUI(
         this,
@@ -138,11 +159,9 @@ export class TableDemoScene extends CoreScene {
         position.y,
         hand,
         {
-          layout: index === 0 ? HandLayout.FAN : HandLayout.LINE, // Fan for human player, line for others
-          scale: 0.5,
-          width: 300,
-          interactive: index === 0, // Only human player can interact
-          showCardFaces: index === 0 // Only show human player's cards
+          layout: HandLayout.FAN,
+          interactive: index === 0,
+          showCardFaces: index === 0
         }
       );
 
@@ -150,135 +169,169 @@ export class TableDemoScene extends CoreScene {
     });
 
     // Add table background
-    const tableGraphics = this.add.graphics();
-    tableGraphics.fillStyle(0x006600); // Green table
-    tableGraphics.fillRoundedRect(50, 50, 700, 500, 20);
+    const tableGraphics = this.add.rectangle(400, 300, 700, 500, 0x006600);
     tableGraphics.setDepth(-1);
+    tableGraphics.setOrigin(0.5);
+    tableGraphics.setName('TableBackground');
 
     // Add labels
     this.add.text(this.DECK_POSITION.x, this.DECK_POSITION.y - 80, 'DECK', {
-      fontSize: '16px',
+      fontSize: '32pt',
       color: '#ffffff',
       align: 'center'
     }).setOrigin(0.5);
 
     this.add.text(this.DISCARD_POSITION.x, this.DISCARD_POSITION.y - 80, 'DISCARD', {
-      fontSize: '16px',
+      fontSize: '32pt',
       color: '#ffffff',
       align: 'center'
     }).setOrigin(0.5);
   }
 
   private setupEventListeners(): void {
+    console.log('Setting up event listeners for table and piles...');
+    
     // Listen to table events
-    this.table.on(TABLE_EVENTS.COMPLETE_TRANSFER, (event) => {
-      console.log('Card transfer completed:', event);
-      this.updateUI();
+    this.table.on(TABLE_EVENTS.TRANSFER_REQUESTED, (event: CardTransferRequest) => {
+      console.log('🔔 Table: Card transfer REQUESTED:', event);
+      this.handleCardTransferRequested(event);
     });
 
-    this.table.on(TABLE_EVENTS.CANCEL_TRANSFER, (event) => {
-      console.log('Card transfer failed:', event);
+    this.table.on(TABLE_EVENTS.TRANSFER_COMPLETED, (event: CardTransferRequest) => {
+      console.log('✅ Table: Card transfer COMPLETED:', event);
+    });
+
+    this.table.on(TABLE_EVENTS.TRANSFER_BLOCKED, (event: CardTransferRequest) => {
+      console.log('❌ Table: Card transfer BLOCKED:', event);
+    });
+
+    // Listen to deck events
+    this.deck.on(PILE_EVENTS.CARD_REMOVED, (event: PileCardEvent) => {
+      console.log('🃏 Deck: Card removed:', event.card.displayName);
     });
 
     // Listen to hand events for the human player
-    const humanPlayer = this.players[0];
-    const humanHand = humanPlayer.getPile('hand-0') as Hand;
+    const humanHand = this.hands[0]; // First hand is human player
     
-    humanHand.on('cardAdded', (event) => {
-      console.log('Human player received card:', event.card.displayName);
+    humanHand.on(PILE_EVENTS.CARD_ADDED, (event: PileCardEvent) => {
+      console.log('🖐️ Human hand: Card added:', event.card.displayName);
     });
 
-    humanHand.on('selectionChanged', (event) => {
-      console.log('Human player selection:', event.selectedCards.length + ' cards');
+    humanHand.on(HAND_EVENTS.SELECTION_CHANGED, (event: HandSelectionChangedEvent) => {
+      console.log('👆 Human hand: Selection changed:', event.selectedCards.length + ' cards');
+    });
+
+    // Listen to discard pile events
+    this.discardPile.on(PILE_EVENTS.CARD_ADDED, (event: PileCardEvent) => {
+      console.log('🗑️ Discard: Card added:', event.card.displayName);
+    });
+
+    console.log('Event listeners setup complete');
+  }
+
+  private handleCardTransferRequested(event: CardTransferRequest): void {
+    // Get the CardUI for the card that's about to be transferred, before it gets moved
+    const sourceUI = this.findUIForPile(event.source);
+    const targetUI = this.findUIForPile(event.target);
+    
+    if (sourceUI && targetUI) {
+      // Find the CardUI for the card that's about to be transferred
+      const cardUI = sourceUI.findCardUI(event.card.id);
+      if (cardUI) {
+        // Remove the CardUI from the DeckUI temporarily for animation
+        sourceUI.removeCardUI(cardUI);
+        
+        // Animate the existing CardUI from source to target
+        this.animateCardTransfer(cardUI, sourceUI, targetUI);
+      }
+    }
+  }
+
+  private findUIForPile(pile: Pile): PileUI | null {
+    if (pile === this.deck) return this.deckUI;
+    if (pile === this.discardPile) return this.discardPileUI;
+    
+    // Check if it's one of the hand piles
+    const handIndex = this.hands.indexOf(pile as Hand);
+    if (handIndex >= 0) {
+      return this.playerHandUIs[handIndex];
+    }
+    
+    return null;
+  }
+
+  private animateCardTransfer(cardUI: CardUI, sourceUI: PileUI, targetUI: PileUI): void {
+    cardUI.setPosition(sourceUI.x, sourceUI.y);
+
+    // Animate from source to target position
+    this.tweens.add({
+      targets: cardUI,
+      x: targetUI.x,
+      y: targetUI.y,
+      duration: 400,
+      ease: 'Power2',
+      onComplete: () => {
+        // After animation, the target UI should handle the card through its pile events
+        // The CardUI will be managed by the target pile UI now
+        targetUI.addCardUI(cardUI);
+      }
     });
   }
 
   private async dealInitialCards(): Promise<void> {
-    console.log('Starting to deal cards...');
+    console.log('Starting to deal cards using table system...');
     
-    // Deal 5 cards to each player in turn
+    // Deal 5 cards to each player in turn using table transfer system
     for (let round = 0; round < 5; round++) {
       for (let playerIndex = 0; playerIndex < this.players.length; playerIndex++) {
         const player = this.players[playerIndex];
-        const hand = player.getPile(`hand-${playerIndex}`); // Get the hand
+        const hand = this.hands[playerIndex];
         
-        await this.dealCardToPlayer(player, hand!, round * 200 + playerIndex * 50);
+        await this.dealCardToPlayerUsingTable(player, hand, playerIndex * 50);
       }
     }
 
     // Deal one card to discard pile and reveal it
-    this.time.delayedCall(5 * 200 + 4 * 50 + 500, () => {
-      this.dealToDiscardPile();
-    });
-
-    // Reveal top deck card
-    this.time.delayedCall(5 * 200 + 4 * 50 + 1000, () => {
-      this.revealTopDeckCard();
+    this.time.delayedCall(500, () => {
+      const card = this.deck.peek();
+      if (card) {
+        this.handleCardTransferRequested({
+          source: this.deck,
+          target: this.discardPile,
+          card,
+          context: { reason: 'initial discard' }
+        });
+      }
     });
   }
 
-  private async dealCardToPlayer(player: Player, targetHand: any, delay: number): Promise<void> {
+  private async dealCardToPlayerUsingTable(player: Player, targetHand: Hand, delay: number): Promise<void> {
     return new Promise((resolve) => {
       this.time.delayedCall(delay, () => {
-        // Draw card from deck and add to hand
-        const card = this.deck.drawCard();
+        // Get the top card from deck for transfer
+        const card = this.deck.peek();
         if (card) {
-          targetHand.addCard(card);
-          console.log(`Dealt ${card.displayName} to ${player.name}`);
+          // Execute the transfer through table
+          const success = this.table.requestCardTransfer(this.deck, targetHand, card, { 
+            reason: 'deal',
+            playerId: player.id 
+          });
+          
+          if (success) {
+            console.log(`Dealt ${card.displayName} to ${player.name}`);
+          } else {
+            console.log(`Failed to deal card to ${player.name}`);
+          }
         }
         resolve();
       });
     });
   }
 
-  private dealToDiscardPile(): void {
-    const card = this.deck.drawCard();
-    if (card) {
-      this.discardPile.addCard(card);
-      console.log(`Dealt ${card.displayName} to discard pile`);
-      
-      // Show the discard card
-      this.time.delayedCall(200, () => {
-        this.showDiscardCard(card);
-      });
-    }
-  }
-
-  private showDiscardCard(card: CardProperties): void {
-    if (this.topDiscardCard) {
-      this.topDiscardCard.destroy();
-    }
-
-    this.topDiscardCard = new CardUI(
-      this,
-      0, 0,
-      card,
-      {
-        scale: 0.6,
-        showFace: true,
-        interactive: false
-      }
-    );
-
-    this.discardPileUI.add(this.topDiscardCard);
-  }
-
-  private revealTopDeckCard(): void {
-    console.log('Revealing top deck card...');
-    this.deckUI.revealTopCard();
-  }
-
   private updateUI(): void {
-    // Update hand UIs to reflect new cards
-    this.playerHandUIs.forEach((handUI, index) => {
-      handUI.refresh();
-    });
-
-    // Update discard pile display
-    const topDiscard = this.discardPile.peek();
-    if (topDiscard && !this.topDiscardCard) {
-      this.showDiscardCard(topDiscard);
-    }
+    // The UI will automatically update through event listeners in the new system
+    // No manual refresh needed as PileUI responds to pile events
+    console.log('UI updated through event system');
   }
 
   private setupControls(): void {
@@ -291,10 +344,11 @@ export class TableDemoScene extends CoreScene {
       'R: Reveal/Hide human player cards',
       'S: Shuffle deck'
     ], {
-      fontSize: '14px',
+      fontSize: '28pt',
       color: '#ffffff',
       backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
+      padding: { x: 10, y: 5 },
+      wordWrap: { width: 600 }
     });
 
     // Keyboard controls
@@ -303,26 +357,27 @@ export class TableDemoScene extends CoreScene {
     });
 
     this.input.keyboard?.on('keydown-D', () => {
-      const humanPlayer = this.players[0];
-      const humanHand = humanPlayer.getPile('hand-0');
-      const card = this.deck.drawCard();
-      if (card && humanHand) {
-        humanHand.addCard(card);
-        console.log(`Drew ${card.displayName} for human player`);
+      const humanHand = this.hands[0]; // First hand is human player's hand
+      const card = this.deck.peek();
+      if (card) {
+        const success = this.table.requestCardTransfer(this.deck, humanHand, card, { reason: 'draw' });
+        if (success) {
+          console.log(`Drew ${card.displayName} for human player`);
+        }
       }
     });
 
     this.input.keyboard?.on('keydown-P', () => {
-      const humanPlayer = this.players[0];
-      const humanHand = humanPlayer.getPile('hand-0') as Hand;
-      const selectedCards = humanHand.getSelectedCards;
+      const humanHand = this.hands[0]; // First hand is human player's hand
+      const selectedCards = humanHand.getSelectedCards(); // Call as method
       
       if (selectedCards.length > 0) {
         // Play cards to discard pile
         selectedCards.forEach(card => {
-          humanHand.removeSpecificCard(card.id);
-          this.discardPile.addCard(card);
-          console.log(`Played ${card.displayName} to discard`);
+          const success = this.table.requestCardTransfer(humanHand, this.discardPile, card, { reason: 'play' });
+          if (success) {
+            console.log(`Played ${card.displayName} to discard`);
+          }
         });
         humanHand.clearSelection();
         this.updateUI();
@@ -330,9 +385,9 @@ export class TableDemoScene extends CoreScene {
     });
 
     this.input.keyboard?.on('keydown-R', () => {
-      const humanHand = this.players[0].getPile('hand-0') as Hand;
-      humanHand.toggleVisibility();
-      this.playerHandUIs[0].refresh();
+      const humanHand = this.hands[0]; // First hand is human player's hand
+      // Toggle visibility is not available in new API, skip this functionality
+      console.log('Visibility toggle not implemented in new API');
     });
 
     this.input.keyboard?.on('keydown-S', () => {
@@ -343,13 +398,14 @@ export class TableDemoScene extends CoreScene {
 
   private dealRoundOfCards(): void {
     // Deal one card to each player
-    this.players.forEach((player, index) => {
-      const hand = player.getPile(`hand-${index}`);
+    this.hands.forEach((hand, index) => {
       this.time.delayedCall(index * 100, () => {
-        const card = this.deck.drawCard();
-        if (card && hand) {
-          hand.addCard(card);
-          console.log(`Dealt ${card.displayName} to ${player.name}`);
+        const card = this.deck.peek();
+        if (card) {
+          const success = this.table.requestCardTransfer(this.deck, hand, card, { reason: 'deal round' });
+          if (success) {
+            console.log(`Dealt ${card.displayName} to ${this.players[index].name}`);
+          }
         }
       });
     });
@@ -375,13 +431,24 @@ export function createTableExample(): Table {
 
   // Give each player a hand
   playerConfigs.forEach((config, index) => {
-    const player = new Player(config);
-    const hand = new Hand(`hand-${index}`, `${config.name}'s Hand`, {
+    const player: Player = {
+      id: config.id,
+      name: config.name,
+      isHuman: config.isHuman,
+      piles: new Map()
+    };
+    
+    const hand = new Hand({
+      id: `hand-${index}`,
+      name: `${config.name}'s Hand`,
       maxCards: 10,
-      isPlayerHand: config.isHuman
+      isPlayerHand: config.isHuman,
+      showCardFaces: config.isHuman,
+      allowMultiSelect: config.isHuman
     });
-    player.addPile(`hand-${index}`, hand);
-    table.addPlayer(config.id, player);
+    
+    player.piles.set(`hand-${index}`, hand);
+    table.addPlayer(player);
   });
 
   // Create and register deck
@@ -390,7 +457,10 @@ export function createTableExample(): Table {
   table.registerPile('deck', deck);
 
   // Create and register discard pile
-  const discardPile = new Pile();
+  const discardPile = new Pile({
+    id: 'discard',
+    name: 'Discard Pile'
+  });
   table.registerPile('discard', discardPile);
 
   console.log('Example table created with 4 players, deck, and discard pile');

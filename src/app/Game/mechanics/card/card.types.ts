@@ -74,13 +74,6 @@ export interface CardProperties {
   id: string;
   assetKey: string; // The kenny_cards filename
   backAssetKey?: string; // The kenny_cards back filename.
-  
-  // Card categorization
-  type: CardType;
-  suit: CardSuit;
-  color: CardColor;
-  value: CardValue | DiceValue;
-  
   // Display properties
   displayName: string;
   shortName: string;

@@ -1,8 +1,8 @@
-// Table - Main game controller that manages interaction between piles, hands, decks, and players
+// Table - Main game controller that manages interaction between piles and players
 import Phaser from 'phaser';
 import { CardProperties } from '../card.types';
-import { StartTransferCardsEvent, CompleteTransferCardsEvent, cardsCanBeAdded, cardsCanBeRemoved } from '../card.events';
-import { Pile } from '../pile/pile.manager';
+import { Pile, PILE_EVENTS } from '../pile/pile.manager';
+import { Deck } from '../deck/deck.manager';
 
 export interface TableConfig {
   id: string;
@@ -12,11 +12,25 @@ export interface TableConfig {
   rules?: any;
 }
 
+export interface Player {
+  id: string;
+  name: string;
+  isHuman: boolean;
+  piles: Map<string, Pile>;
+}
+
+export interface CardTransferRequest {
+  source: Pile;
+  target: Pile;
+  card: CardProperties;
+  context?: any;
+}
+
 export const TABLE_EVENTS = {
   // Card transfer events
-  START_TRANSFER: 'table:startTransfer',
-  COMPLETE_TRANSFER: 'table:completeTransfer',
-  CANCEL_TRANSFER: 'table:cancelTransfer',
+  TRANSFER_REQUESTED: 'table:transferRequested',
+  TRANSFER_COMPLETED: 'table:transferCompleted',
+  TRANSFER_BLOCKED: 'table:transferBlocked',
   
   // Player events
   PLAYER_JOINED: 'table:playerJoined',
@@ -35,7 +49,7 @@ export const TABLE_EVENTS = {
 export class Table extends Phaser.Events.EventEmitter {
   private config: TableConfig;
   private piles: Map<string, Pile> = new Map();
-  private players: Map<string, any> = new Map(); // Will be properly typed when Player is created
+  private players: Map<string, Player> = new Map();
   private gameState: 'waiting' | 'active' | 'paused' | 'ended' = 'waiting';
   private currentPlayer?: string;
 
@@ -50,8 +64,8 @@ export class Table extends Phaser.Events.EventEmitter {
   // =========================================================================
 
   private setupEventListeners(): void {
-    // Listen for transfer requests from any pile
-    this.on(TABLE_EVENTS.START_TRANSFER, this.handleStartTransfer, this);
+    // The table listens for transfer requests and validates them
+    this.on(TABLE_EVENTS.TRANSFER_REQUESTED, this.handleTransferRequest, this);
   }
 
   // =========================================================================
@@ -61,17 +75,18 @@ export class Table extends Phaser.Events.EventEmitter {
   registerPile(id: string, pile: Pile): void {
     this.piles.set(id, pile);
     
-    // Set up event forwarding from pile to table
-    // Piles emit events to the table, table decides if they're allowed
-    this.setupPileEventForwarding(id, pile);
+    // Listen to pile events to track game state
+    this.setupPileEventListeners(id, pile);
+    
+    console.log(`Pile ${id} (${pile.name}) registered with table`);
   }
 
   unregisterPile(id: string): void {
     const pile = this.piles.get(id);
     if (pile) {
-      // Clean up event listeners
-      pile.removeAllListeners();
+      this.cleanupPileEventListeners(pile);
       this.piles.delete(id);
+      console.log(`Pile ${id} unregistered from table`);
     }
   }
 
@@ -83,122 +98,113 @@ export class Table extends Phaser.Events.EventEmitter {
     return Array.from(this.piles.values());
   }
 
-  private setupPileEventForwarding(id: string, pile: Pile): void {
-    // When a pile wants to transfer cards, it emits to the table
-    // The table validates and coordinates the transfer
-    pile.on('transfer:request', (event: any) => {
-      this.requestTransfer(event.source, event.cards, event.target, event.context);
+  private setupPileEventListeners(id: string, pile: Pile): void {
+    // Listen to pile events for game logic
+    pile.on(PILE_EVENTS.CARD_ADDED, (event) => {
+      console.log(`Card added to pile ${id}:`, event);
+    });
+
+    pile.on(PILE_EVENTS.CARD_REMOVED, (event) => {
+      console.log(`Card removed from pile ${id}:`, event);
+    });
+
+    pile.on(PILE_EVENTS.PILE_SHUFFLED, (event) => {
+      console.log(`Pile ${id} was shuffled`);
+    });
+
+    pile.on(PILE_EVENTS.CARDS_ORGANIZED, (event) => {
+      console.log(`Pile ${id} was organized`);
     });
   }
 
+  private cleanupPileEventListeners(pile: Pile): void {
+    pile.removeAllListeners();
+  }
+
   // =========================================================================
-  // CARD TRANSFER SYSTEM (Core functionality)
+  // CARD TRANSFER SYSTEM
   // =========================================================================
 
   /**
-   * Request to transfer cards from one pile to another
-   * This is the main method all card movements go through
+   * Request to transfer a card from one pile to another
+   * This validates the transfer before allowing it
    */
-  requestTransfer(
-    source: cardsCanBeRemoved, 
-    cards: CardProperties[], 
-    target: cardsCanBeAdded, 
-    context?: any
-  ): boolean {
-    const transferEvent: StartTransferCardsEvent = {
+  requestCardTransfer(source: Pile, target: Pile, card: CardProperties, context?: any): boolean {
+    const transferRequest: CardTransferRequest = {
       source,
-      cards,
-      target,
-      context,
-      cancellable: true
+      target, 
+      card,
+      context
     };
 
-    // Emit start transfer event - rules can cancel this
-    this.emit(TABLE_EVENTS.START_TRANSFER, transferEvent);
+    // Emit transfer request - rules can block this
+    this.emit(TABLE_EVENTS.TRANSFER_REQUESTED, transferRequest);
 
-    // If not cancelled, perform the transfer
-    if (transferEvent.cancellable) {
-      return this.executeTransfer(transferEvent);
-    }
-
-    return false;
-  }
-
-  private handleStartTransfer(event: StartTransferCardsEvent): void {
-    // This is where game rules would be applied
-    // For now, we'll allow all transfers
-    // Rules engine would hook into this method
-    
-    // Example rule checking:
-    if (!this.validateTransfer(event)) {
-      event.cancellable = false;
-      this.emit(TABLE_EVENTS.ACTION_BLOCKED, {
+    // Validate the transfer
+    if (this.validateCardTransfer(transferRequest)) {
+      return this.executeCardTransfer(transferRequest);
+    } else {
+      this.emit(TABLE_EVENTS.TRANSFER_BLOCKED, {
         reason: 'Transfer not allowed by game rules',
-        event
+        transferRequest
       });
+      return false;
     }
   }
 
-  private validateTransfer(event: StartTransferCardsEvent): boolean {
-    // Basic validation - can be extended with game-specific rules
-    
-    // Check if source has the cards
-    const sourceHasCards = event.cards.every(card => {
-      if ('contains' in event.source) {
-        return (event.source as any).contains(card.id);
-      }
-      return true; // Assume valid if we can't check
-    });
+  private handleTransferRequest(request: CardTransferRequest): void {
+    // Game rules would hook into this method
+    // For now, we allow all valid transfers
+    console.log(`Transfer requested: ${request.card.displayName} from ${request.source.name} to ${request.target.name}`);
+  }
 
-    if (!sourceHasCards) {
+  private validateCardTransfer(request: CardTransferRequest): boolean {
+    // Check if source has the card
+    const sourceHasCard = request.source.findCard(c => c.id === request.card.id) !== undefined;
+    if (!sourceHasCard) {
+      console.warn(`Source pile ${request.source.name} does not contain card ${request.card.displayName}`);
       return false;
     }
 
-    // Check if target can accept cards (could check limits, types, etc.)
-    // This would be implemented based on specific game rules
+    // Check if target can accept the card
+    // Note: maxCards checking would need to be exposed via a public method on Pile
+    // For now, just check if it's a reasonable size (game rules can override this)
+    if (request.target.size() >= 100) { // Arbitrary large limit
+      console.warn(`Target pile ${request.target.name} is at capacity`);
+      return false;
+    }
 
     return true;
   }
 
-  private executeTransfer(event: StartTransferCardsEvent): boolean {
+  private executeCardTransfer(request: CardTransferRequest): boolean {
     try {
-      // Remove cards from source
-      const removedCards: CardProperties[] = [];
-      for (const card of event.cards) {
-        if ('findCard' in event.source && 'removeSpecificCard' in event.source) {
-          const foundCard = (event.source as any).findCard(card.id);
-          if (foundCard) {
-            (event.source as any).removeSpecificCard(card.id);
-            removedCards.push(foundCard);
-          }
-        } else {
-          // Fallback to basic removal if specific removal not available
-          const removed = event.source.removeCard();
-          if (removed) {
-            removedCards.push(removed);
-          }
-        }
+      // Remove card from source
+      const removedCard = request.source.removeSpecificCard(request.card);
+      if (!removedCard) {
+        console.error(`Failed to remove card ${request.card.displayName} from ${request.source.name}`);
+        return false;
       }
 
-      // Add cards to target
-      event.target.addCards(removedCards);
+      // Add card to target
+      request.target.addCard(removedCard);
 
       // Emit completion event
-      const completeEvent: CompleteTransferCardsEvent = {
-        source: event.source,
-        cards: removedCards,
-        target: event.target,
-        context: event.context
-      };
+      this.emit(TABLE_EVENTS.TRANSFER_COMPLETED, {
+        source: request.source,
+        target: request.target,
+        card: removedCard,
+        context: request.context
+      });
 
-      this.emit(TABLE_EVENTS.COMPLETE_TRANSFER, completeEvent);
-
+      console.log(`Successfully transferred ${removedCard.displayName} from ${request.source.name} to ${request.target.name}`);
       return true;
+
     } catch (error) {
       console.error('Transfer failed:', error);
-      this.emit(TABLE_EVENTS.CANCEL_TRANSFER, {
-        event,
-        error: error instanceof Error ? error.message : 'Unknown error'
+      this.emit(TABLE_EVENTS.ACTION_BLOCKED, {
+        reason: error instanceof Error ? error.message : 'Unknown error',
+        transferRequest: request
       });
       return false;
     }
@@ -208,24 +214,37 @@ export class Table extends Phaser.Events.EventEmitter {
   // PLAYER MANAGEMENT
   // =========================================================================
 
-  addPlayer(playerId: string, player: any): void {
-    this.players.set(playerId, player);
-    this.emit(TABLE_EVENTS.PLAYER_JOINED, { playerId, player });
+  addPlayer(player: Player): void {
+    this.players.set(player.id, player);
+    
+    // Register all player's piles with the table
+    player.piles.forEach((pile, pileId) => {
+      this.registerPile(`${player.id}-${pileId}`, pile);
+    });
+
+    this.emit(TABLE_EVENTS.PLAYER_JOINED, { player });
+    console.log(`Player ${player.name} joined the table`);
   }
 
   removePlayer(playerId: string): void {
     const player = this.players.get(playerId);
     if (player) {
+      // Unregister all player's piles
+      player.piles.forEach((pile, pileId) => {
+        this.unregisterPile(`${player.id}-${pileId}`);
+      });
+
       this.players.delete(playerId);
-      this.emit(TABLE_EVENTS.PLAYER_LEFT, { playerId, player });
+      this.emit(TABLE_EVENTS.PLAYER_LEFT, { player });
+      console.log(`Player ${player.name} left the table`);
     }
   }
 
-  getPlayer(playerId: string): any {
+  getPlayer(playerId: string): Player | undefined {
     return this.players.get(playerId);
   }
 
-  getAllPlayers(): any[] {
+  getAllPlayers(): Player[] {
     return Array.from(this.players.values());
   }
 
@@ -234,15 +253,22 @@ export class Table extends Phaser.Events.EventEmitter {
   // =========================================================================
 
   startGame(): void {
-    if (this.gameState === 'waiting') {
+    if (this.gameState === 'waiting' && this.players.size > 0) {
       this.gameState = 'active';
-      this.emit(TABLE_EVENTS.GAME_STARTED, { tableId: this.config.id });
+      this.emit(TABLE_EVENTS.GAME_STARTED, { 
+        tableId: this.config.id,
+        playerCount: this.players.size 
+      });
+      console.log(`Game started on table ${this.config.name}`);
     }
   }
 
   endGame(): void {
     this.gameState = 'ended';
-    this.emit(TABLE_EVENTS.GAME_ENDED, { tableId: this.config.id });
+    this.emit(TABLE_EVENTS.GAME_ENDED, { 
+      tableId: this.config.id 
+    });
+    console.log(`Game ended on table ${this.config.name}`);
   }
 
   pauseGame(): void {
@@ -258,11 +284,50 @@ export class Table extends Phaser.Events.EventEmitter {
   }
 
   setCurrentPlayer(playerId: string): void {
+    const previousPlayer = this.currentPlayer;
     this.currentPlayer = playerId;
     this.emit(TABLE_EVENTS.TURN_CHANGED, { 
       currentPlayer: playerId,
-      previousPlayer: this.currentPlayer 
+      previousPlayer 
     });
+    console.log(`Turn changed to player ${playerId}`);
+  }
+
+  // =========================================================================
+  // CONVENIENCE METHODS
+  // =========================================================================
+
+  /**
+   * Deal cards from a deck to players' hands
+   */
+  dealCardsToPlayers(deckId: string, handPileId: string, cardsPerPlayer: number): void {
+    const deck = this.getPile(deckId) as Deck;
+    if (!deck) {
+      console.error(`Deck ${deckId} not found`);
+      return;
+    }
+
+    this.players.forEach(player => {
+      const hand = player.piles.get(handPileId);
+      if (hand) {
+        for (let i = 0; i < cardsPerPlayer; i++) {
+          const card = deck.peek();
+          if (card) {
+            this.requestCardTransfer(deck, hand, card, { context: 'dealing' });
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Shuffle a pile by ID
+   */
+  shufflePile(pileId: string): void {
+    const pile = this.getPile(pileId);
+    if (pile) {
+      pile.shuffle();
+    }
   }
 
   // =========================================================================
@@ -289,13 +354,17 @@ export class Table extends Phaser.Events.EventEmitter {
     return this.piles.size;
   }
 
+  get currentPlayerId(): string | undefined {
+    return this.currentPlayer;
+  }
+
   // =========================================================================
   // CLEANUP
   // =========================================================================
 
   override destroy(): void {
     // Clean up all piles
-    this.piles.forEach(pile => pile.removeAllListeners());
+    this.piles.forEach(pile => this.cleanupPileEventListeners(pile));
     this.piles.clear();
     
     // Clean up players
@@ -303,5 +372,7 @@ export class Table extends Phaser.Events.EventEmitter {
     
     // Remove all event listeners
     this.removeAllListeners();
+    
+    console.log(`Table ${this.config.name} destroyed`);
   }
 }

@@ -25,10 +25,12 @@ function createPlayingCard(
     id: `playing_${suit}_${value}`,
     assetKey,
     backAssetKey: KennyCards.CARD_BACK,
-    type: CardType.PLAYING_CARD,
-    suit,
-    color,
-    value,
+    data: {
+      type: CardType.PLAYING_CARD,
+      suit,
+      color,
+      value,
+    },
     displayName,
     shortName: displayName,
     isPlayable: true,
@@ -48,10 +50,12 @@ function createUnoCard(
     id: `uno_${color}_${value}`,
     assetKey,
     backAssetKey: KennyCards.COLOR_BACK,
-    type: CardType.UNO_CARD,
-    suit: CardSuit.NONE,
-    color,
-    value,
+    data: {
+      type: CardType.UNO_CARD,
+      suit: CardSuit.NONE,
+      color,
+      value
+    },
     displayName,
     shortName: displayName,
     isPlayable: true,
@@ -70,10 +74,12 @@ function createDice(
     id: `dice_${isDecorated ? 'decorated_' : ''}${value}`,
     assetKey,
     backAssetKey: KennyCards.DICE_QUESTION,
-    type: CardType.DICE,
-    suit: CardSuit.NONE,
-    color: CardColor.NONE,
-    value,
+    data: {
+      type: CardType.DICE,
+      suit: CardSuit.NONE,
+      color: CardColor.NONE,
+      value,
+    },
     displayName,
     shortName: displayName,
     isPlayable: true,
@@ -247,10 +253,12 @@ export const SPECIAL_CARDS: CardProperties[] = [
     id: 'joker_black',
     assetKey: KennyCards.CARD_JOKER_BLACK,
     backAssetKey: KennyCards.CARD_BACK,
-    type: CardType.JOKER,
-    suit: CardSuit.NONE,
-    color: CardColor.BLACK,
-    value: CardValue.WILD,
+    data: {
+      type: CardType.JOKER,
+      suit: CardSuit.NONE,
+      color: CardColor.BLACK,
+      value: CardValue.WILD,
+    },
     displayName: "Black Joker",
     shortName: "Joker",
     isPlayable: true,
@@ -261,10 +269,12 @@ export const SPECIAL_CARDS: CardProperties[] = [
     id: 'joker_red',
     assetKey: KennyCards.CARD_JOKER_RED,
     backAssetKey: KennyCards.CARD_BACK,
-    type: CardType.JOKER,
-    suit: CardSuit.NONE,
-    color: CardColor.RED,
-    value: CardValue.WILD,
+    data: {
+      type: CardType.JOKER,
+      suit: CardSuit.NONE,
+      color: CardColor.RED,
+      value: CardValue.WILD,
+    },
     displayName: "Red Joker",
     shortName: "Joker",
     isPlayable: true,
@@ -303,14 +313,34 @@ export function getCardById(id: string): CardProperties | undefined {
   return CARDS_BY_ID.get(id);
 }
 
-export function getCardsByType(type: CardType): CardProperties[] {
-  return ALL_DEFINED_CARDS.filter(card => card.type === type);
+export function getCardsByKey(collection: CardProperties[], key: string, value: any): CardProperties[] {
+  return collection.filter(card => card.data?.[key] === value);
 }
 
-export function getCardsBySuit(suit: CardSuit): CardProperties[] {
-  return ALL_DEFINED_CARDS.filter(card => card.suit === suit);
+export function getCardsByType(collection: CardProperties[], type: CardType): CardProperties[] {
+  return getCardsByKey(collection, 'type', type);
 }
 
-export function getCardsByColor(color: CardColor): CardProperties[] {
-  return ALL_DEFINED_CARDS.filter(card => card.color === color);
+export function getCardsBySuit(collection: CardProperties[], suit: CardSuit): CardProperties[] {
+  return getCardsByKey(collection, 'suit', suit);
+}
+
+export function getCardsByValue(collection: CardProperties[], value: CardValue | number | string): CardProperties[] {
+  return getCardsByKey(collection, 'value', value);
+}
+
+export function getCardsByColor(collection: CardProperties[], color: CardColor): CardProperties[] {
+  return getCardsByKey(collection, 'color', color);
+}
+
+export function getAllCardsByType(type: CardType): CardProperties[] {
+  return getCardsByType(ALL_DEFINED_CARDS, type);
+}
+
+export function getAllCardsBySuit(suit: CardSuit): CardProperties[] {
+  return getCardsBySuit(ALL_DEFINED_CARDS, suit);
+}
+
+export function getAllCardsByColor(color: CardColor): CardProperties[] {
+  return getCardsByColor(ALL_DEFINED_CARDS, color);
 }

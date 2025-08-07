@@ -1,5 +1,5 @@
 import { Register } from '../../services/di/di.system';
-import { UI_CONFIG_KEY, GameConfig, UI_CONFIG, UI_CONFIG_TYPE } from './ui.config';
+import { UI_CONFIG_KEY, UI_CONFIG, UI_CONFIG_TYPE } from './ui.config';
 
 type ConstructElement = (x: number, y: number) => void;
 

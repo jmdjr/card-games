@@ -1,6 +1,8 @@
 // Hand system types and interfaces
 import { CardProperties } from '../card.types';
 import { DECK_TYPE, GAME_TYPE } from '../deck/deck.manager';
+import { Pile } from '../pile';
+import { PileUIConfig } from '../pile/pile.types';
 
 export interface HandConfig {
   /** Maximum number of cards this hand can hold */
@@ -37,13 +39,7 @@ export interface HandState {
 }
 
 // Hand UI Configuration Interface
-export interface HandUIConfig {
-  /** Width of the hand area */
-  width: number;
-  /** Height of the hand area */
-  height: number;
-  /** Scale factor for all cards */
-  scale: number;
+export interface HandUIConfig extends PileUIConfig {
   /** Maximum number of cards to display */
   maxVisibleCards: number;
   /** Whether cards should be displayed face up */
@@ -73,11 +69,6 @@ export interface HandUIConfig {
   /** Whether to animate card reveals */
   animateReveals: boolean;
   /** Hover effect configuration */
-  hoverEffect: {
-    enabled: boolean;
-    liftHeight: number;
-    scaleIncrease: number;
-  };
 }
 
 export interface HandUIState {

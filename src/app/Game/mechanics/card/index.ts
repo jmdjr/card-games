@@ -55,8 +55,6 @@ export {
 export { 
   Deck, 
   DeckFactory, 
-  GameSession,
-  GAME_CONFIGS 
 } from './deck/deck.manager';
 
 export {

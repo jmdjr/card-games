@@ -1,35 +1,19 @@
-// Phaser-based Deck UI Component - Visual representation of a card deck
-import Phaser, { Tweens } from 'phaser';
-import {
-  DeckUIConfig,
-  DeckUIState,
-  CardDrawEvent,
-  DeckClickEvent,
-  DeckStyle,
-  DeckOrientation,
-  DECK_UI_PRESETS
-} from '../deck/deck.types';
-import { CardProperties } from '../card.types';
-import { Deck, DECK_TYPE } from '../deck/deck.manager';
-import { ASSET_ATLAS } from '../../../assets.data';
+// Deck UI Component - Visual representation of a Deck extending PileUI
+import Phaser from 'phaser';
+import { PileUI, PileUIConfig, CardUITransfer } from './pile.ui';
+import { Deck, DECK_EVENTS } from '../deck/deck.manager';
 import { CardUI } from './card.ui';
 
-export class DeckUI extends Phaser.GameObjects.Container {
-  private config: DeckUIConfig;
-  private deckState: DeckUIState;
-  private deckData: Deck;
-  private cardSprites: CardUI[] = [];
-  private topCardSprite: CardUI | null = null;
-  private cardCountText: Phaser.GameObjects.Text | null = null;
-  private emptyDeckGraphics: Phaser.GameObjects.Graphics | null = null;
-  static Events = {
-    CARD_DRAWN: 'cardDrawn',
-    DECK_SHUFFLED: 'deckShuffled',
-    DECK_CLICK: 'deckClick'
-  };
+export interface DeckUIConfig extends PileUIConfig {
+  showTopCard: boolean;
+  enableDrawing: boolean;
+  dealAnimation: boolean;
+}
 
-  // Animation tracking
-  private isAnimating: boolean = false;
+export class DeckUI extends PileUI {
+  protected override config: DeckUIConfig;
+  protected override pile: Deck;
+  private topCardUI?: CardUI;
 
   constructor(
     scene: Phaser.Scene,
@@ -38,683 +22,209 @@ export class DeckUI extends Phaser.GameObjects.Container {
     deck: Deck,
     config: Partial<DeckUIConfig> = {}
   ) {
-    super(scene, x, y);
-
-    this.deckData = deck;
-    this.config = this.mergeWithDefaults(config);
-    this.deckState = this.initializeState();
-
-    // Add to scene
-    scene.add.existing(this);
-
-    // Initialize the visual representation
-    this.createDeckVisuals();
-    this.setupInteractions();
-    const rect = this.scene.add.rectangle(0, 0, this._configedWidth(), this._configedHeight(), 0x00ff00, 0.5);
-    // Make container interactive
-    this.setInteractive(
-      rect.getBounds(),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    rect.setPosition(this.x, this.y);
-    rect.setVisible(false);
+    super(scene, x, y, deck, config);
+    this.bindDeckEvents();
+    this.createInitialCardUIs();
   }
 
   // =========================================================================
   // INITIALIZATION
   // =========================================================================
 
-  private mergeWithDefaults(config: Partial<DeckUIConfig>): DeckUIConfig {
-    const preset = DECK_UI_PRESETS[this.deckData.deckType];
+  protected override mergeWithDefaults(config: Partial<DeckUIConfig>): DeckUIConfig {
+    const baseConfig = super.mergeWithDefaults(config);
     return {
-      ...preset,
+      ...baseConfig,
+      showTopCard: true,
+      enableDrawing: true,
+      dealAnimation: true,
+      interactive: true,
       ...config
     } as DeckUIConfig;
   }
 
-  private initializeState(): DeckUIState {
-    return {
-      cardCount: this.deckData.size(),
-      topCard: this.config.showTopCard ? this.deckData.peek() : null,
-      isShuffling: false,
-      isDrawing: false,
-      isEmpty: this.deckData.isEmpty(),
-      position: { x: 0, y: 0 },
-      rotation: 0
-    };
+  private createInitialCardUIs(): void {
+    // Create CardUI for all cards in the deck (invisible initially)
+    this.pile.getAllCards().forEach((card, index) => {
+      const cardUI = new CardUI(this.scene, 0, 0, card, {
+        showFace: false,
+        interactive: false
+      });
+      
+      cardUI.setVisible(index >= this.pile.size() - this.config.maxVisibleCards);
+      this.addCardUI(cardUI);
+    });
+
+    this.updateTopCard();
+  }
+
+  private bindDeckEvents(): void {
+    this.pile.on(DECK_EVENTS.CARD_DRAWN, this.onCardDrawn, this);
+    this.pile.on(DECK_EVENTS.CARDS_DRAWN, this.onCardsDrawn, this);
+    this.pile.on(DECK_EVENTS.PILE_SHUFFLED, this.onDeckShuffled, this);
+    this.pile.on(DECK_EVENTS.DECK_RESET, this.onDeckReset, this);
   }
 
   // =========================================================================
-  // VISUAL CREATION
+  // DECK EVENT HANDLERS
   // =========================================================================
 
-  private createDeckVisuals(): void {
-    this.clearVisuals();
+  private onCardDrawn(event: any): void {
+    const { card } = event;
+    this.updateDisplay();
+    this.updateTopCard();
+  }
 
-    // Check if deck should appear empty (when top card is revealed and it's the last/only card)
-    const shouldShowEmptyDeck = this.deckState.isEmpty || 
-      (this.config.showTopCard && this.deckState.topCard && this.deckState.cardCount === 1);
+  private onCardsDrawn(event: any): void {
+    const { cards } = event;
+    this.updateDisplay();
+    this.updateTopCard();
+  }
 
-    if (shouldShowEmptyDeck) {
-      this.createEmptyDeckVisual();
+  private onDeckShuffled(event: any): void {
+    this.animateShuffleEffect();
+    this.updateTopCard();
+  }
+
+  private onDeckReset(event: any): void {
+    this.clearAllCardUIs();
+    this.createInitialCardUIs();
+  }
+
+  // =========================================================================
+  // CARD MANAGEMENT
+  // =========================================================================
+
+  private updateTopCard(): void {
+    const topCard = this.pile.peek();
+    
+    if (topCard && this.config.showTopCard) {
+      this.topCardUI = this.findCardUI(topCard.id);
+      if (this.topCardUI) {
+        this.topCardUI.setDepth(this.config.maxVisibleCards + 1);
+      }
     } else {
-      this.createCardStack();
+      this.topCardUI = undefined;
     }
-
-    // Always create top card visual if configured and available
-    if (this.config.showTopCard && this.deckState.topCard) {
-      this.createTopCardVisual();
-    }
-
-    if (this.config.showCardCount) {
-      this.createCardCountDisplay();
-    }
-  }
-
-  private createCardStack(): void {
-    const cardsToShow = Math.min(this.deckState.cardCount, this.config.maxVisibleCards);
-
-    const cardDatas = this.deckData.peekMultiple(cardsToShow);
-    for (let i = 0; i < cardsToShow; i++) {
-      const offsetX = i * this.config.cardOffsetX;
-      const offsetY = i * this.config.cardOffsetY;
-
-      const cardUI = new CardUI(this.scene, offsetX, offsetY, cardDatas[i], {
-        scale: this.config.scale,
-        depth: i,
-        showFace: false // Always show card backs in deck
-      });
-
-      // Add subtle shadow effect for depth
-      if (this.config.shadow && i > 0) {
-        cardUI.setShadowEffect(true, 0.1);
-      }
-
-      this.add(cardUI);
-      this.cardSprites.push(cardUI);
-    }
-
-    // If we should show the top card and we have cards, use the last card sprite as the top card
-    if (this.config.showTopCard && this.deckState.topCard && this.cardSprites.length > 0) {
-      this.topCardSprite = this.cardSprites[this.cardSprites.length - 1];
-      this.topCardSprite.setCardDepth(this.config.maxVisibleCards + 1); // Ensure it's on top
-    }
-  }
-
-  private _configedWidth(): number {
-    return this.config.width * this.config.scale;
-  }
-  private _configedHeight(): number {
-    return this.config.height * this.config.scale;
-  }
-
-  private createTopCardVisual(): void {
-    if (!this.deckState.topCard || !this.topCardSprite) return;
-
-    // The top card sprite is already positioned correctly from createCardStack()
-    // We just need to animate the reveal if configured
-    if (this.config.animateCardDraw) {
-      this.animateTopCardReveal(this.deckState.topCard);
-    } else {
-      // If no animation, move to final position and show the card face immediately
-      this.topCardSprite.setPosition(this.config.topCardOffsetX, this.config.topCardOffsetY);
-      const cardScale = this.config.topCardScale || this.config.scale;
-      this.topCardSprite.setCardScale(cardScale);
-      this.topCardSprite.showFace();
-    }
-  }
-
-  private animateTopCardReveal(card: CardProperties): void {
-    if (!this.topCardSprite) return;
-
-    // Use the configured scale for the top card
-    const cardScale = this.config.topCardScale || this.config.scale;
-    const finalX = this.config.topCardOffsetX;
-    const finalY = this.config.topCardOffsetY;
-
-    // Start with card back, then move and flip to reveal
-    this.scene.time.delayedCall(500, () => { // Small delay before revealing
-      if (!this.topCardSprite) return;
-
-      // Phase 1: Move to final position while starting to flip
-      this.topCardSprite.animateMoveTo(finalX, finalY, 300, {
-        scale: cardScale,
-        ease: 'Power2'
-      }).then(() => {
-        if (!this.topCardSprite) return;
-        
-        // Phase 2: Flip to show face
-        this.topCardSprite.animateFlip(200);
-      });
-    });
-  }
-
-  private async animateTopCardHide(): Promise<void> {
-    return new Promise(resolve => {
-      if (!this.topCardSprite) {
-        resolve();
-        return;
-      }
-
-      this.isAnimating = true;
-
-      // Calculate the correct deck position to animate back to
-      // This should be the top of the card stack where this sprite originally was
-      const cardIndex = this.cardSprites.indexOf(this.topCardSprite);
-      const targetX = cardIndex * this.config.cardOffsetX;
-      const targetY = cardIndex * this.config.cardOffsetY;
-
-      // Phase 1: Flip to show back
-      this.topCardSprite.animateFlip(200).then(() => {
-        if (!this.topCardSprite) return;
-        
-        // Phase 2: Move back to deck position
-        this.topCardSprite.animateMoveTo(targetX, targetY, 300, {
-          scale: this.config.scale,
-          ease: 'Power2'
-        }).then(() => {
-          // Reset the depth back to its original position in the stack
-          if (this.topCardSprite) {
-            this.topCardSprite.setCardDepth(cardIndex);
-            this.topCardSprite = null; // Clear reference but don't destroy the sprite
-          }
-          
-          this.isAnimating = false;
-          resolve();
-        });
-      });
-    });
-  }
-
-  private createEmptyDeckVisual(): void {
-    this.emptyDeckGraphics = this.scene.add.graphics();
-    this.emptyDeckGraphics.lineStyle(2, 0xcccccc, 1);
-    this.emptyDeckGraphics.strokeRect(0, 0, this._configedWidth(), this._configedHeight());
-
-    // Add dashed effect
-    for (let i = 0; i < this._configedWidth(); i += 10) {
-      this.emptyDeckGraphics.lineBetween(i, 0, i + 5, 0);
-      this.emptyDeckGraphics.lineBetween(i, this._configedHeight(), i + 5, this._configedHeight());
-    }
-
-    for (let i = 0; i < this._configedHeight(); i += 10) {
-      this.emptyDeckGraphics.lineBetween(0, i, 0, i + 5);
-      this.emptyDeckGraphics.lineBetween(this._configedWidth(), i, this._configedWidth(), i + 5);
-    }
-
-    // Add "Empty" text
-    const emptyText = this.scene.add.text(
-      this._configedWidth() / 2,
-      this._configedHeight() / 2,
-      'Empty',
-      {
-        fontSize: '32pt',
-        color: '#999999',
-        align: 'center'
-      }
-    );
-    emptyText.setOrigin(0.5);
-
-    this.add([this.emptyDeckGraphics, emptyText]);
-  }
-
-  private createCardCountDisplay(): void {
-    const countX = this.config.width / 2;
-    const countY = this.config.height + 15;
-
-    // Background circle
-    const countBg = this.scene.add.graphics();
-    countBg.fillStyle(0x000000, 0.7);
-    countBg.fillCircle(countX, countY, 28);
-
-    this.cardCountText = this.scene.add.text(countX, countY, this.deckState.cardCount.toString(), {
-      fontSize: '28pt',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      align: 'center'
-    });
-    this.cardCountText.setOrigin(0.5);
-
-    this.add([countBg, this.cardCountText]);
   }
 
   // =========================================================================
-  // INTERACTIONS
+  // DRAWING OPERATIONS
   // =========================================================================
 
-  private setupInteractions(): void {
-    if (!this.config.clickable) return;
-
-    this.on('pointerdown', this.handlePointerDown, this);
-    this.on('pointerup', this.handlePointerUp, this);
-
-    if (this.config.hoverEffect) {
-      this.on('pointerover', this.handlePointerOver, this);
-      this.on('pointerout', this.handlePointerOut, this);
+  drawCard(): CardUI | null {
+    if (!this.config.enableDrawing || this.pile.isEmpty()) {
+      return null;
     }
-  }
 
-  private handlePointerDown(): void {
-    if (this.isAnimating || this.deckState.isEmpty) return;
-
-    // Visual feedback - slightly scale down
-    this.setScale(0.98);
-  }
-
-  private handlePointerUp(): void {
-    if (this.isAnimating) return;
-
-    // Reset scale
-    this.setScale(1);
-
-    if (this.deckState.isEmpty) return;
-
-    const clickEvent: DeckClickEvent = {
-      deckId: this.deckData.name,
-      clickType: 'single',
-      position: { x: this.input!.localX, y: this.input!.localY }
-    };
-
-    this.emit(DeckUI.Events.DECK_CLICK, clickEvent);
-  }
-
-  private handlePointerOver(): void {
-    if (this.isAnimating || this.deckState.isEmpty) return;
-
-    // Hover effect - lift cards slightly
-    this.cardSprites.forEach((cardUI, index) => {
-      cardUI.animateMoveTo(
-        cardUI.x,
-        cardUI.y - (index * 3),
-        200,
-        {
-          scale: this.config.scale * 1.1,
-          ease: 'Power2'
-        }
-      );
-    });
-  }
-
-  private handlePointerOut(): void {
-    if (this.isAnimating) return;
-
-    // Reset hover effect
-    this.cardSprites.forEach((cardUI, index) => {
-      cardUI.animateMoveTo(
-        cardUI.x,
-        index * this.config.cardOffsetY,
-        200,
-        {
-          scale: this.config.scale,
-          ease: 'Power2'
-        }
-      );
-    });
-  }
-
-  // =========================================================================
-  // DECK OPERATIONS
-  // =========================================================================
-
-  async drawCard(): Promise<CardProperties | null> {
-    if (this.isAnimating || this.deckState.isEmpty) return null;
-
-    const card = this.deckData.removeCard();
+    const card = this.pile.draw();
     if (!card) return null;
 
-    if (this.config.animateCardDraw) {
-      // If there's a revealed top card, hide it first, then animate it moving away
-      if (this.topCardSprite && this.config.showTopCard) {
-        // Hide the revealed top card first
-        await this.hideTopCard();
-        // Then animate the draw from the deck stack
-        await this.animateCardDrawAndFlip(card);
-      } else {
-        // Otherwise animate from the deck stack normally
-        await this.animateCardDrawAndFlip(card);
-      }
+    const cardUI = this.findCardUI(card.id);
+    if (cardUI) {
+      this.removeCardUI(cardUI);
+      return cardUI;
     }
 
-    this.updateState();
-    this.refresh();
+    return null;
+  }
 
-    const drawEvent: CardDrawEvent = {
-      card,
-      remainingCards: this.deckData.size(),
-      deckId: this.deckData.name
+  createCardUIForTransfer(): CardUITransfer | null {
+    const drawnCardUI = this.drawCard();
+    if (!drawnCardUI) return null;
+
+    return {
+      cardUI: drawnCardUI,
+      card: drawnCardUI.card,
+      sourcePosition: { 
+        x: this.x + drawnCardUI.x, 
+        y: this.y + drawnCardUI.y 
+      }
     };
-
-    this.emit(DeckUI.Events.CARD_DRAWN, drawEvent);
-    return card;
   }
 
-  async shuffleDeck(): Promise<void> {
-    if (this.isAnimating) return;
+  // =========================================================================
+  // LAYOUT OVERRIDE
+  // =========================================================================
 
-    this.deckData.shuffle();
-
-    if (this.config.shuffleAnimationDuration > 0) {
-      await this.animateShuffle();
-    }
-
-    this.updateState();
-    this.refresh();
-    this.emit(DeckUI.Events.DECK_SHUFFLED, { deckId: this.deckData.name });
+  protected override calculateCardPosition(index: number): { x: number; y: number } {
+    // Stack layout with slight offset for depth effect
+    const visibleIndex = Math.min(index, this.config.maxVisibleCards - 1);
+    return {
+      x: visibleIndex * this.config.cardOffsetX,
+      y: visibleIndex * this.config.cardOffsetY
+    };
   }
 
-  async revealTopCard(): Promise<CardProperties | null> {
-    if (this.isAnimating) return null;
-
-    const topCard = this.deckData.peek();
-    if (!topCard) return null;
-
-    // Update state to show top card
-    this.deckState.topCard = topCard;
+  protected override updateCardPositions(): void {
+    super.updateCardPositions();
     
-    if (!this.topCardSprite && this.config.showTopCard) {
-      // Create the top card sprite if it doesn't exist
-      this.createTopCardVisual();
-    } else if (this.topCardSprite) {
-      // Animate revealing the existing top card
-      this.animateTopCardReveal(topCard);
-    }
-
-    return topCard;
-  }
-
-  async hideTopCard(): Promise<void> {
-    if (this.isAnimating || !this.topCardSprite) return;
-
-    if (this.config.animateCardDraw) {
-      await this.animateTopCardHide();
-    } else {
-      // Instantly hide without animation - reset to original position and frame
-      if (this.topCardSprite) {
-        const cardIndex = this.cardSprites.indexOf(this.topCardSprite);
-        this.topCardSprite.setPosition(cardIndex * this.config.cardOffsetX, cardIndex * this.config.cardOffsetY);
-        this.topCardSprite.setCardScale(this.config.scale);
-        this.topCardSprite.showBack();
-        this.topCardSprite.setCardDepth(cardIndex);
-        this.topCardSprite = null; // Clear reference but don't destroy
-      }
-    }
-
-    // Update state
-    this.deckState.topCard = null;
-  }
-
-  // =========================================================================
-  // ANIMATIONS
-  // =========================================================================
-
-  private async animateCardDraw(): Promise<void> {
-    return new Promise(resolve => {
-      this.isAnimating = true;
-      this.deckState.isDrawing = true;
-
-      const topCard = this.cardSprites[this.cardSprites.length - 1];
-      if (!topCard) {
-        this.isAnimating = false;
-        this.deckState.isDrawing = false;
-        resolve();
-        return;
-      }
-
-      // Animate card flying away
-      this.scene.tweens.add({
-        targets: topCard,
-        x: topCard.x + 200,
-        y: topCard.y - 100,
-        rotation: 0.3,
-        scaleX: 0.8,
-        scaleY: 0.8,
-        alpha: 0,
-        duration: this.config.drawAnimationDuration,
-        ease: 'Power2',
-        onComplete: () => {
-          this.isAnimating = false;
-          this.deckState.isDrawing = false;
-          resolve();
-        }
-      });
-    });
-  }
-
-  private async animateCardDrawAndFlip(card: CardProperties): Promise<void> {
-    return new Promise(resolve => {
-      this.isAnimating = true;
-      this.deckState.isDrawing = true;
-
-      const topCard = this.cardSprites[this.cardSprites.length - 1];
-      if (!topCard) {
-        this.isAnimating = false;
-        this.deckState.isDrawing = false;
-        resolve();
-        return;
-      }
-
-      // Move card to center of screen for flip animation
-      const centerX = this.scene.cameras.main.centerX;
-      const centerY = this.scene.cameras.main.centerY;
-      
-      // Phase 1: Move card to center and scale up
-      topCard.animateMoveTo(
-        centerX - (this._configedWidth() / 2),
-        centerY - (this._configedHeight() / 2),
-        this.config.drawAnimationDuration * 0.3,
-        {
-          scale: this.config.scale * 1.5,
-          ease: 'Power2'
-        }
-      ).then(() => {
-        // Phase 2: Flip to show face
-        topCard.animateFlip(this.config.drawAnimationDuration * 0.4).then(() => {
-          // Phase 3: Pause to show the card
-          this.scene.time.delayedCall(this.config.drawAnimationDuration * 0.3, () => {
-            // Phase 4: Fade out
-            topCard.animateMoveTo(
-              topCard.x,
-              topCard.y - 100,
-              this.config.drawAnimationDuration * 0.3,
-              {
-                scale: this.config.scale * 0.5,
-                alpha: 0,
-                ease: 'Power2'
-              }
-            ).then(() => {
-              this.isAnimating = false;
-              this.deckState.isDrawing = false;
-              resolve();
-            });
-          });
-        });
-      });
-    });
-  }
-
-  // private async animateTopCardDraw(card: CardProperties): Promise<void> {
-  //   return new Promise(resolve => {
-  //     this.isAnimating = true;
-  //     this.deckState.isDrawing = true;
-
-  //     if (!this.topCardSprite) {
-  //       this.isAnimating = false;
-  //       this.deckState.isDrawing = false;
-  //       resolve();
-  //       return;
-  //     }
-
-  //     // Move the revealed top card to center of screen for flip animation
-  //     const centerX = this.scene.cameras.main.centerX;
-  //     const centerY = this.scene.cameras.main.centerY;
-      
-  //     // Phase 1: Move card to center and scale up
-  //     this.scene.tweens.add({
-  //       targets: this.topCardSprite,
-  //       x: centerX - (this._configedWidth() / 2),
-  //       y: centerY - (this._configedHeight() / 2),
-  //       scaleX: this.config.scale * 1.5,
-  //       scaleY: this.config.scale * 1.5,
-  //       duration: this.config.drawAnimationDuration * 0.4,
-  //       ease: 'Power2',
-  //       onComplete: () => {
-  //         // Phase 2: Pause to show the card (it's already revealed)
-  //         this.scene.time.delayedCall(this.config.drawAnimationDuration * 0.3, () => {
-  //           // Phase 3: Fade out or move to final position
-  //           this.scene.tweens.add({
-  //             targets: this.topCardSprite,
-  //             alpha: 0,
-  //             scaleX: this.config.scale * 0.5,
-  //             scaleY: this.config.scale * 0.5,
-  //             y: this.topCardSprite!.y - 100,
-  //             duration: this.config.drawAnimationDuration * 0.3,
-  //             ease: 'Power2',
-  //             onComplete: () => {
-  //               // Remove the old top card sprite
-  //               if (this.topCardSprite) {
-  //                 this.topCardSprite.destroy();
-  //                 this.topCardSprite = null;
-  //               }
-                
-  //               this.isAnimating = false;
-  //               this.deckState.isDrawing = false;
-  //               resolve();
-  //             }
-  //           });
-  //         });
-  //       }
-  //     });
-  //   });
-  // }
-
-  private async animateShuffle(): Promise<void> {
-    return new Promise(resolve => {
-      this.isAnimating = true;
-      this.deckState.isShuffling = true;
-      
-      // Hide the top card if it's showing
-      this.topCardSprite?.setVisible(false);
-
-      const totalDuration = this.config.shuffleAnimationDuration;
-      const shufflePhases = 3; // Number of random movements
-      const phaseDuration = totalDuration / shufflePhases;
-
-      const performShufflePhase = () => {
-        // Random shuffle movements for this phase
-        const phasePromises = this.cardSprites.map((cardUI, index) => {
-          return new Promise<void>(phaseResolve => {
-            const originalX = index * this.config.cardOffsetX;
-            const originalY = index * this.config.cardOffsetY;
-
-            const animationChain = async () => {
-              for (let i = 0; i < shufflePhases; i++) {
-                const randomX = (Math.random() - 0.5) * 30;
-                const randomY = (Math.random() - 0.5) * 50;
-                const randomRotation = (Math.random() - 0.5) * 0.5;
-                
-                // Random movement
-                await cardUI.animateMoveTo(
-                  originalX + randomX,
-                  originalY + randomY,
-                  phaseDuration,
-                  {
-                    rotation: randomRotation,
-                    ease: 'Sine.easeInOut'
-                  }
-                );
-                
-                // Return to position
-                await cardUI.animateMoveTo(
-                  originalX,
-                  originalY,
-                  phaseDuration * 2,
-                  {
-                    rotation: 0,
-                    ease: 'Back.easeOut'
-                  }
-                );
-              }
-              phaseResolve();
-            };
-
-            animationChain();
-          });
-        });
-
-        Promise.all(phasePromises).then(() => {
-          this.isAnimating = false;
-          this.deckState.isShuffling = false;
-          resolve();
-        });
-      };
-
-      // Start the shuffle animation
-      performShufflePhase();
+    // Only show the top few cards
+    this.cardUIs.forEach((cardUI, index) => {
+      const shouldBeVisible = index >= this.cardUIs.length - this.config.maxVisibleCards;
+      cardUI.setVisible(shouldBeVisible);
     });
   }
 
   // =========================================================================
-  // STATE MANAGEMENT
+  // INTERACTION OVERRIDE
   // =========================================================================
 
-  private updateState(): void {
-    this.deckState.cardCount = this.deckData.size();
-    this.deckState.isEmpty = this.deckData.isEmpty();
-    this.deckState.topCard = this.config.showTopCard ? this.deckData.peek() : null;
-  }
-
-  private clearVisuals(): void {
-    console.log('Clearing deck visuals');
-    this.removeAll(true);
-    this.cardSprites = [];
-    
-    // Only clear topCardSprite if it wasn't already destroyed in animation
-    if (this.topCardSprite && this.topCardSprite.scene) {
-      this.topCardSprite = null;
+  protected override onPileClick(pointer: Phaser.Input.Pointer): void {
+    if (this.config.enableDrawing && !this.pile.isEmpty()) {
+      const transfer = this.createCardUIForTransfer();
+      if (transfer) {
+        // Emit event for external handling
+        this.emit('cardDrawnFromDeck', {
+          transfer,
+          deck: this.pile,
+          timestamp: Date.now()
+        });
+      }
     }
-    
-    this.cardCountText = null;
-    this.emptyDeckGraphics = null;
   }
 
-  refresh(): void {
-    this.updateState();
-    this.createDeckVisuals();
+  protected override onPileHover(pointer: Phaser.Input.Pointer): void {
+    if (this.config.enableDrawing && !this.pile.isEmpty() && this.topCardUI) {
+      this.topCardUI.setTint(0xcccccc);
+    }
   }
 
-  updateConfig(newConfig: Partial<DeckUIConfig>): void {
-    this.config = { ...this.config, ...newConfig };
-    this.refresh();
+  protected override onPileOut(pointer: Phaser.Input.Pointer): void {
+    if (this.topCardUI) {
+      this.topCardUI.clearTint();
+    }
   }
 
   // =========================================================================
-  // UTILITY METHODS
+  // DISPLAY OVERRIDE
   // =========================================================================
 
-  getDeckState(): DeckUIState {
-    return { ...this.deckState };
+  protected override getCardCountText(): string {
+    return `${this.pile.size()}`;
   }
 
-  getConfig(): DeckUIConfig {
-    return { ...this.config };
+  // =========================================================================
+  // DECK-SPECIFIC OPERATIONS
+  // =========================================================================
+
+  shuffleDeck(): void {
+    this.pile.shuffle();
   }
 
-  override destroy(): void {
-    super.destroy();
-    this.removeAllListeners();
+  resetDeck(): void {
+    this.pile.reset();
   }
 
-  // Static factory methods for common deck types
-  static createPokerDeck(scene: Phaser.Scene, x: number, y: number, deck: Deck): DeckUI {
-    return new DeckUI(scene, x, y, deck, DECK_UI_PRESETS[DECK_TYPE.POKER]);
-  }
+  // =========================================================================
+  // CLEANUP
+  // =========================================================================
 
-  static createUnoDeck(scene: Phaser.Scene, x: number, y: number, deck: Deck): DeckUI {
-    return new DeckUI(scene, x, y, deck, DECK_UI_PRESETS[DECK_TYPE.UNO]);
-  }
-
-  static createDiceSet(scene: Phaser.Scene, x: number, y: number, deck: Deck): DeckUI {
-    return new DeckUI(scene, x, y, deck, DECK_UI_PRESETS[DECK_TYPE.DICE_GAME]);
+  override destroy(fromScene?: boolean): void {
+    this.pile.off(DECK_EVENTS.CARD_DRAWN, this.onCardDrawn, this);
+    this.pile.off(DECK_EVENTS.CARDS_DRAWN, this.onCardsDrawn, this);
+    this.pile.off(DECK_EVENTS.PILE_SHUFFLED, this.onDeckShuffled, this);
+    this.pile.off(DECK_EVENTS.DECK_RESET, this.onDeckReset, this);
+    super.destroy(fromScene);
   }
 }
